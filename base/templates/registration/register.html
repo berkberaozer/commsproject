@@ -1,4 +1,8 @@
-<form action="{% url 'logout' %}" method="post">
-    {% csrf_token %}
-    <button type="submit">Logout</button>
-</form>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Register</button>
+    </form>
+    <form action="../../auth/login">
+        <button type="submit">Get Back</button>
+    </form>

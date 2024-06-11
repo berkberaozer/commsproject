@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 class Person (User):
 
     def __str__(self):
-        return self.username
+        return self.username + self.email
 
 
 class Chat (models.Model):
