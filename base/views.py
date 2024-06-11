@@ -14,7 +14,6 @@ from django.contrib.auth.views import LoginView
 from django.contrib.auth.models import User
 from .forms import RegistrationForm
 
-
 from .models import User, Chat, Message
 
 
@@ -29,11 +28,8 @@ class LoginPage(LoginView):
             messages.success(request, 'You are now logged in!')
             return HttpResponseRedirect(reverse("base:index"))
 
-
     def get(self, request):
-        return render(request)
-
-
+        return render(request, template_name="base/index.html")
 
 
 class RegisterView(generic.FormView):
@@ -47,13 +43,17 @@ class RegisterView(generic.FormView):
         form = RegistrationForm(request.POST)
         if form.is_valid():
             print(form.cleaned_data)
-            user = User.objects.create_user(username=form.cleaned_data['username'], email=form.cleaned_data['email'], password=form.cleaned_data['password'],first_name=form.cleaned_data['first_name'], last_name=form.cleaned_data['last_name'])
+            user = User.objects.create_user(username=form.cleaned_data['username'], email=form.cleaned_data['email'],
+                                            password=form.cleaned_data['password'],
+                                            first_name=form.cleaned_data['first_name'],
+                                            last_name=form.cleaned_data['last_name'])
             User.save(user)
             print(User.objects.values())
 
             return HttpResponseRedirect(reverse('base:index'))
         else:
             return render(request, self.template_name, {'form': form})
+
 
 class IndexView(LoginRequiredMixin, generic.ListView):
     login_url = '../auth/login/'
@@ -62,4 +62,10 @@ class IndexView(LoginRequiredMixin, generic.ListView):
     context_object_name = "active_chats"
 
     def get_queryset(self):
-        return Chat.objects.filter(belong__id=self.request.user.id)
+        return Chat.objects.filter(belong = self.request.user)
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        if 'search' in self.request.GET and self.request.GET['search']:
+            data['users'] = User.objects.filter(username__contains=self.request.GET['search'])
+        return data
