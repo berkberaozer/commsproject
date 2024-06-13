@@ -103,3 +103,13 @@ body {
 .chat-input button:hover {
     background: #0056b3;
 }
+
+.user a {
+    padding: 5px 30px 5px 10px;
+    display: block;
+
+}
+
+.user a:hover {
+    background: transparent no-repeat 3px 170px;
+}

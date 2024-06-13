@@ -58,8 +58,6 @@ class IndexView(LoginRequiredMixin, View):
 
     def get(self, request, *args, **kwargs):
         data = {}
-        if 'search' in self.request.GET and self.request.GET['search']:
-            data['users'] = User.objects.filter(username__contains=self.request.GET['search'])
         if 'talk' in self.request.GET and self.request.GET['talk'] and User.objects.filter(
                 username=self.request.GET['talk']).exists():
             data['talk'] = User.objects.filter(username__contains=self.request.GET['talk'])
@@ -77,7 +75,7 @@ class IndexView(LoginRequiredMixin, View):
         return HttpResponseRedirect(reverse('base:index'))
 
 
-class GetMessages(View):
+class GetMessages(LoginRequiredMixin, View):
 
     def get(self, request, *args, **kwargs):
         chat_id = self.request.GET.get('chat')
@@ -85,9 +83,25 @@ class GetMessages(View):
         return JsonResponse({"messages": list(queryset)})
 
 
-class SendMessage(View):
+class SendMessage(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         chat_id = request.POST.get('chat_id')
         Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")), target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"), date=datetime.now(), chat=Chat.objects.get(id=chat_id))
         Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")), target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"), date=datetime.now(), chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target, target=Chat.objects.get(id=chat_id).belong))
         return JsonResponse({"success": True})
+
+
+class SearchUser(View):
+    def get(self, request, *args, **kwargs):
+        searched_username = request.GET.get('username')
+        users = User.objects.filter(Q(username__contains=searched_username) & ~Q(username = self.request.user.username)).values('first_name', 'last_name', 'id', 'username')
+        return JsonResponse({"users": list(users)})
+
+
+class CreateChat(View):
+    def post(self, request, *args, **kwargs):
+        target = User.objects.get(username=request.POST.get('target'))
+        belong = self.request.user
+        chat = Chat.objects.create(belong=belong, target=target)
+
+        return JsonResponse({"chat_id": chat.id})

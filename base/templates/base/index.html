@@ -9,22 +9,12 @@
     <button type="submit">Logout</button>
 </form>
 
-<form method="get" action="?">
-    {% csrf_token %}
-    <input class="form-control mr-sm-2" type="search" placeholder="Search" aria-label="Search" name="search" >
-    <button class="btn btn-outline-success my-2 my-sm-0" type="submit">Search</button>
-</form>
+<input class="search-user-input" id="search-user-input" type="search" placeholder="Search" aria-label="Search" name="search" >
+<button class="search-user-button" id="search-user-button" type="submit">Search</button>
 
 <div class="users">
-    {% if users.count > 0 %}
-    <ul>
-        {% for user in users %}
-            <a href="./?talk={{ user }}">{{ user }}</a>
-        {% endfor %}
-    </ul>
-    {% elif request.GET.search %}
-        <span>No users</span>
-    {% endif %}
+    <ul id="users-list"></ul>
+    <span style="display: none">No Users!</span>
 </div>
 
 <body>
@@ -33,7 +23,7 @@
             <ul class="chat-list" id="chat-list">
                 {% if user_chats.count > 0 %}
                         {% for chat in user_chats %}
-                        <li data-chat="{{ chat.id }}" class="">{{chat}}</li>
+                        <li data-chat="{{ chat.id }}" class="chat">{{chat}}</li>
                         {% endfor %}
                 {% else %}
                     <li>No chats are available.</li>
@@ -50,7 +40,6 @@
             </div>
         </div>
     </div>
-
     <script>
         $.ajaxSetup({
         beforeSend: function(xhr, settings) {
@@ -159,6 +148,122 @@
                 document.getElementById('send-button').click();
             }
         });
+
+        document.getElementById('search-user-button').addEventListener('click', function() {
+            const input = document.getElementById('search-user-input');
+
+            if(input.text !== '') {
+                $.ajax({
+                    type: "GET",
+                    url: "{% url 'base:search_user' %}",
+                    data: {
+                        "username": input.value,
+                    },
+                    dataType: "json",
+                    success: function (data) {
+                        users = data["users"];
+                        var userElement;
+                        var userName;
+                        let userList = document.getElementById('users-list');
+                        userList.innerHTML = '';
+
+                        for(var i=0; i<users.length; i++) {
+                            userElement = document.createElement('li');
+                            userElement.classList.add('user');
+
+                            userList.appendChild(userElement);
+
+                            userName = document.createElement('a');
+                            userName.textContent = users[i].username;
+                            userName.classList.add("username")
+                            userName.href = "#";
+                            userElement.appendChild(userName);
+                        }
+
+                        const userNames = document.querySelectorAll('.username');
+                        userNames.forEach(el => el.addEventListener('click', event => {
+                            let username = el.textContent;
+                            const chats = document.querySelectorAll('.chat');
+                            let flag = true;
+                            if(chats.length !== 0) {
+                                chats.forEach(element => {
+                                    if (username === element.textContent) {
+                                        flag = false;
+                                        element.click();
+                                        userList.innerHTML = '';
+                                    }
+                                })
+                                if (flag) {
+                                    $.ajax({
+                                        type: "POST",
+                                        url: "{% url 'base:create_chat' %}",
+                                        data: {
+                                            "target": username,
+                                        },
+                                        dataType: "json",
+                                        success: function (data) {
+                                            var chatList = document.getElementById("chat-list");
+
+                                            var chatElement = document.createElement('li');
+                                            chatElement.setAttribute("data-chat", data["chat_id"]);
+                                            chatElement.innerText = username;
+                                            chatElement.classList.add("chat", "active");
+                                            chatList.appendChild(chatElement);
+
+                                            loadChat(data["chat_id"]);
+                                        },
+                                        failure: function () {
+
+                                        },
+                                        complete: function () {
+                                            userList.innerHTML = '';
+                                        }
+                                    });
+                                }
+                            } else {
+                                console.log("ZORT");
+                                $.ajax({
+                                        type: "POST",
+                                        url: "{% url 'base:create_chat' %}",
+                                        data: {
+                                            "target": username,
+                                        },
+                                        dataType: "json",
+                                        success: function (data) {
+                                            var chatList = document.getElementById("chat-list");
+
+                                            var chatElement = document.createElement('li');
+                                            chatElement.setAttribute("data-chat", data["chat_id"]);
+                                            chatElement.innerText = username;
+                                            chatElement.classList.add("chat", "active");
+                                            chatList.appendChild(chatElement);
+
+                                            loadChat(data["chat_id"]);
+
+                                        },
+                                        failure: function () {
+
+                                        },
+                                        complete: function () {
+                                            userList.innerHTML = '';
+                                        }
+                                    });
+                            }
+
+                        }));
+                    },
+                    failure: function () {
+
+                    }
+                });
+            }
+        });
+
+        document.getElementById('search-user-input').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('search-user-button').click();
+            }
+        });
     </script>
 </body>
-</html>
