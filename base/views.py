@@ -83,3 +83,11 @@ class GetMessages(View):
         chat_id = self.request.GET.get('chat')
         queryset = Message.objects.filter(chat=chat_id).values()
         return JsonResponse({"messages": list(queryset)})
+
+
+class SendMessage(View):
+    def post(self, request, *args, **kwargs):
+        chat_id = request.POST.get('chat_id')
+        Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")), target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"), date=datetime.now(), chat=Chat.objects.get(id=chat_id))
+        Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")), target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"), date=datetime.now(), chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target, target=Chat.objects.get(id=chat_id).belong))
+        return JsonResponse({"success": True})

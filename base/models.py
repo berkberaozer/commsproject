@@ -12,7 +12,7 @@ class Person(User):
 
 
 class Chat(models.Model):
-    id = models.IntegerField(primary_key=True)
+    id = models.AutoField(primary_key=True)
     belong = models.ForeignKey(User, on_delete=models.CASCADE, related_name='opened_chats')
     target = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_chats')
     UniqueConstraint(fields=('belong', 'to'), name='unique_person')
@@ -22,7 +22,7 @@ class Chat(models.Model):
 
 
 class Message(models.Model):
-    id = models.IntegerField(primary_key=True)
+    id = models.AutoField(primary_key=True)
     source = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_messages")
     target = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_messages")
     message = models.TextField()
@@ -34,7 +34,7 @@ class Message(models.Model):
 
 
 class Group(models.Model):
-    id = models.IntegerField(primary_key=True)
+    id = models.AutoField(primary_key=True)
     belong = models.ForeignKey(Person, on_delete=models.CASCADE)
 
     def __str__(self):
@@ -42,7 +42,7 @@ class Group(models.Model):
 
 
 class GroupMessage(models.Model):
-    id = models.IntegerField(primary_key=True)
+    id = models.AutoField(primary_key=True)
     message = models.TextField()
     group = models.ForeignKey(Group, on_delete=models.CASCADE)
 

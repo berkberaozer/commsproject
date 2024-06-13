@@ -44,6 +44,7 @@
             <div class="chat-header" id="chat-header"></div>
             <div class="chat-messages" id="chat-messages"></div>
             <div class="chat-input">
+                {% csrf_token %}
                 <input type="text" id="message-input" placeholder="Type your message here...">
                 <button id="send-button">Send</button>
             </div>
@@ -51,11 +52,34 @@
     </div>
 
     <script>
+        $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+             function getCookie(name) {
+                 var cookieValue = null;
+                 if (document.cookie && document.cookie != '') {
+                     var cookies = document.cookie.split(';');
+                     for (var i = 0; i < cookies.length; i++) {
+                         var cookie = jQuery.trim(cookies[i]);
+                         // Does this cookie string begin with the name we want?
+                         if (cookie.substring(0, name.length + 1) == (name + '=')) {
+                             cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                             break;
+                         }
+                     }
+                 }
+                 return cookieValue;
+             }
+             if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
+                 // Only send the token to relative URLs i.e. locally.
+                 xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+             }
+         }
+        });
+
         function loadChat(chatId) {
             var chatMessages = document.getElementById('chat-messages');
             chatMessages.innerHTML = '';
             var messageElement;
-
 
             $.ajax({
                 type: "GET",
@@ -69,8 +93,7 @@
 
                     for(var i=0; i<messages.length; i++) {
                         messageElement = document.createElement('div');
-                        console.log(messages[i])
-                        messageElement.classList.add('message', messages[i].source_id == {{ request.user.id }} ? 'sent' : 'received');
+                        messageElement.classList.add('message', messages[i].source_id === {{ request.user.id }} ? 'sent' : 'received');
                         messageElement.textContent = messages[i].message;
                         chatMessages.appendChild(messageElement);
                     }
@@ -82,7 +105,7 @@
 
             var chatHeader = document.getElementById('chat-header');
             chatHeader.textContent = document.querySelector('.chat-list li[data-chat="' + chatId + '"]').textContent;
-            }
+        }
 
         document.getElementById('chat-list').addEventListener('click', function(event) {
             if (event.target.tagName === 'LI') {
@@ -96,25 +119,27 @@
         });
 
         document.getElementById('send-button').addEventListener('click', function() {
+            console.log("clicked");
             var messageInput = document.getElementById('message-input');
             var messageText = messageInput.value.trim();
+            var chatMessages = document.getElementById('chat-messages');
 
             if (messageText !== '') {
                 var activeChatId = document.querySelector('.chat-list li.active').getAttribute('data-chat');
-                var chatMessages = chats[activeChatId];
 
                 $.ajax({
-                    type: "GET",
-                    url: '/sendMessage',
+                    type: "POST",
+                    url: "{% url 'base:send_message' %}",
                     data: {
-                        "result": messageText,
+                        "chat_id": activeChatId,
+                        "message": messageText,
+                        "source_id": {{ request.user.id }},
                     },
                     dataType: "json",
                     success: function (data) {
-                        alert("successfull")
                     },
                     failure: function () {
-                        alert("failure");
+
                     }
                 });
 
@@ -122,11 +147,9 @@
                 messageElement.classList.add('message', 'sent');
                 messageElement.textContent = messageText;
 
-                document.getElementById('chat-messages').appendChild(messageElement);
+                chatMessages.appendChild(messageElement);
                 messageInput.value = '';
                 messageInput.focus();
-
-                chatMessages.push({ text: messageText, type: 'sent' });
             }
         });
 
@@ -136,8 +159,6 @@
                 document.getElementById('send-button').click();
             }
         });
-
-        loadChat('1');
     </script>
 </body>
 </html>
