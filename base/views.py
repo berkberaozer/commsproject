@@ -1,18 +1,15 @@
-from typing import Any
-
 from django.contrib import messages
-from django.db.models.query import QuerySet
-from django.shortcuts import get_object_or_404, get_list_or_404, render, redirect
-from django.http import Http404, HttpResponse, HttpResponseRedirect
+import json
+from django.shortcuts import render, redirect
+from django.http import HttpResponseRedirect, HttpResponse, JsonResponse
 from django.urls import reverse
-from django.db.models import F
-from django.views import generic
-from django.utils import timezone
-from django.contrib.auth import authenticate, login, logout
+from django.views import (View, generic)
+from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.contrib.auth.models import User
+from datetime import datetime
 from .forms import RegistrationForm
+from django.db.models import Q
 
 from .models import User, Chat, Message
 
@@ -20,7 +17,7 @@ from .models import User, Chat, Message
 # Create your views here.
 
 class LoginPage(LoginView):
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         user = authenticate(request, username=request.POST.get('username'), password=request.POST.get('password'))
 
         if user:
@@ -28,18 +25,18 @@ class LoginPage(LoginView):
             messages.success(request, 'You are now logged in!')
             return HttpResponseRedirect(reverse("base:index"))
 
-    def get(self, request):
+    def get(self, request, *args, **kwargs):
         return render(request, template_name="base/index.html")
 
 
-class RegisterView(generic.FormView):
+class RegisterView(View):
     template_name = 'registration/register.html'
 
-    def get(self, request):
+    def get(self, request, *args, **kwargs):
         form = RegistrationForm
         return render(request, self.template_name, {'form': form})
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         form = RegistrationForm(request.POST)
         if form.is_valid():
             print(form.cleaned_data)
@@ -55,17 +52,34 @@ class RegisterView(generic.FormView):
             return render(request, self.template_name, {'form': form})
 
 
-class IndexView(LoginRequiredMixin, generic.ListView):
+class IndexView(LoginRequiredMixin, View):
     login_url = '../auth/login/'
     redirect_field_name = ''
-    template_name = "base/index.html"
-    context_object_name = "active_chats"
 
-    def get_queryset(self):
-        return Chat.objects.filter(belong = self.request.user)
-
-    def get_context_data(self, **kwargs):
-        data = super().get_context_data(**kwargs)
+    def get(self, request, *args, **kwargs):
+        data = {}
         if 'search' in self.request.GET and self.request.GET['search']:
             data['users'] = User.objects.filter(username__contains=self.request.GET['search'])
-        return data
+        if 'talk' in self.request.GET and self.request.GET['talk'] and User.objects.filter(
+                username=self.request.GET['talk']).exists():
+            data['talk'] = User.objects.filter(username__contains=self.request.GET['talk'])
+        data['user_chats'] = Chat.objects.filter(belong=self.request.user)
+        data['chat_messages'] = Message.objects.filter(Q(source=request.user.id) | Q(target=request.user.id))
+        return HttpResponse(render(context=data, request=self.request, template_name="base/index.html"))
+
+    def post(self, request, *args, **kwargs):
+        if 'message' in self.request.POST:
+            send_to = self.request.POST['talk']
+            Message.objects.create(user=User.objects.get(username=send_to), message=request.POST['message'],
+                                   date=datetime.now())
+            Chat.objects.filter(belong=self.request.user, target__username=send_to)
+
+        return HttpResponseRedirect(reverse('base:index'))
+
+
+class GetMessages(View):
+
+    def get(self, request, *args, **kwargs):
+        chat_id = self.request.GET.get('chat')
+        queryset = Message.objects.filter(chat=chat_id).values()
+        return JsonResponse({"messages": list(queryset)})

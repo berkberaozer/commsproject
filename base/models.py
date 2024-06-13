@@ -18,7 +18,7 @@ class Chat(models.Model):
     UniqueConstraint(fields=('belong', 'to'), name='unique_person')
 
     def __str__(self):
-        return "Chat between " + self.belong.__str__() + "-" + self.target.__str__()
+        return self.target.__str__()
 
 
 class Message(models.Model):

@@ -1,26 +1,20 @@
 {% load static %}
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
 <link rel="stylesheet" href="{% static 'base/style.css' %}">
 
 <h1>Hello {{ request.user }}</h1>
 
-{% if active_chats.count > 0 %}
-    <ul>
-        {% for chat in active_chats %}
-        <li> {{ chat }} </li>
-        {% endfor %}
-    </ul>
-{% else %}
-    <p>No chats are available.</p>
-{% endif %}
 <form action="{% url 'logout' %}" method="post">
     {% csrf_token %}
     <button type="submit">Logout</button>
 </form>
 
- <form method="get" action="?">
+<form method="get" action="?">
+    {% csrf_token %}
     <input class="form-control mr-sm-2" type="search" placeholder="Search" aria-label="Search" name="search" >
     <button class="btn btn-outline-success my-2 my-sm-0" type="submit">Search</button>
- </form>
+</form>
+
 <div class="users">
     {% if users.count > 0 %}
     <ul>
@@ -32,3 +26,118 @@
         <span>No users</span>
     {% endif %}
 </div>
+
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <ul class="chat-list" id="chat-list">
+                {% if user_chats.count > 0 %}
+                        {% for chat in user_chats %}
+                        <li data-chat="{{ chat.id }}" class="">{{chat}}</li>
+                        {% endfor %}
+                {% else %}
+                    <li>No chats are available.</li>
+                {% endif %}
+            </ul>
+        </div>
+        <div class="chat-container">
+            <div class="chat-header" id="chat-header"></div>
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input">
+                <input type="text" id="message-input" placeholder="Type your message here...">
+                <button id="send-button">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function loadChat(chatId) {
+            var chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML = '';
+            var messageElement;
+
+
+            $.ajax({
+                type: "GET",
+                url: "{% url 'base:get_messages' %}",
+                data: {
+                    "chat": chatId,
+                },
+                dataType: "json",
+                success: function (data) {
+                    var messages=data["messages"];
+
+                    for(var i=0; i<messages.length; i++) {
+                        messageElement = document.createElement('div');
+                        console.log(messages[i])
+                        messageElement.classList.add('message', messages[i].source_id == {{ request.user.id }} ? 'sent' : 'received');
+                        messageElement.textContent = messages[i].message;
+                        chatMessages.appendChild(messageElement);
+                    }
+                },
+                failure: function () {
+                    alert("failure")
+                }
+            });
+
+            var chatHeader = document.getElementById('chat-header');
+            chatHeader.textContent = document.querySelector('.chat-list li[data-chat="' + chatId + '"]').textContent;
+            }
+
+        document.getElementById('chat-list').addEventListener('click', function(event) {
+            if (event.target.tagName === 'LI') {
+                var activeChat = document.querySelector('.chat-list li.active');
+                if (activeChat) {
+                    activeChat.classList.remove('active');
+                }
+                event.target.classList.add('active');
+                loadChat(event.target.getAttribute('data-chat'));
+            }
+        });
+
+        document.getElementById('send-button').addEventListener('click', function() {
+            var messageInput = document.getElementById('message-input');
+            var messageText = messageInput.value.trim();
+
+            if (messageText !== '') {
+                var activeChatId = document.querySelector('.chat-list li.active').getAttribute('data-chat');
+                var chatMessages = chats[activeChatId];
+
+                $.ajax({
+                    type: "GET",
+                    url: '/sendMessage',
+                    data: {
+                        "result": messageText,
+                    },
+                    dataType: "json",
+                    success: function (data) {
+                        alert("successfull")
+                    },
+                    failure: function () {
+                        alert("failure");
+                    }
+                });
+
+                var messageElement = document.createElement('div');
+                messageElement.classList.add('message', 'sent');
+                messageElement.textContent = messageText;
+
+                document.getElementById('chat-messages').appendChild(messageElement);
+                messageInput.value = '';
+                messageInput.focus();
+
+                chatMessages.push({ text: messageText, type: 'sent' });
+            }
+        });
+
+        document.getElementById('message-input').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('send-button').click();
+            }
+        });
+
+        loadChat('1');
+    </script>
+</body>
+</html>
