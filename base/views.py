@@ -100,8 +100,13 @@ class SearchUser(View):
 
 class CreateChat(View):
     def post(self, request, *args, **kwargs):
-        target = User.objects.get(username=request.POST.get('target'))
-        belong = self.request.user
-        chat = Chat.objects.create(belong=belong, target=target)
+        if request.POST.get('target'):
+            target = User.objects.get(username=request.POST.get('target'))
+            belong = self.request.user
+            chat = Chat.objects.create(belong=belong, target=target)
+        else:
+            belong = User.objects.get(username=request.POST.get('belong'))
+            target = self.request.user
+            chat = Chat.objects.create(belong=belong, target=target)
 
         return JsonResponse({"chat_id": chat.id})
