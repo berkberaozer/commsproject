@@ -24,7 +24,6 @@ class Chat(models.Model):
 class Message(models.Model):
     id = models.AutoField(primary_key=True)
     source = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_messages")
-    target = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_messages")
     message = models.TextField()
     date = models.DateTimeField(auto_now_add=True)
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")

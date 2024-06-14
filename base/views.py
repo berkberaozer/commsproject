@@ -57,22 +57,10 @@ class IndexView(LoginRequiredMixin, View):
     redirect_field_name = ''
 
     def get(self, request, *args, **kwargs):
-        data = {}
-        if 'talk' in self.request.GET and self.request.GET['talk'] and User.objects.filter(
-                username=self.request.GET['talk']).exists():
-            data['talk'] = User.objects.filter(username__contains=self.request.GET['talk'])
-        data['user_chats'] = Chat.objects.filter(belong=self.request.user)
-        data['chat_messages'] = Message.objects.filter(Q(source=request.user.id) | Q(target=request.user.id))
+        chats = Chat.objects.filter(Q(belong=self.request.user) | Q(target=self.request.user))
+        data = {'user_chats': chats,
+                'chat_messages': Message.objects.filter(chat__in=chats)}
         return HttpResponse(render(context=data, request=self.request, template_name="base/index.html"))
-
-    def post(self, request, *args, **kwargs):
-        if 'message' in self.request.POST:
-            send_to = self.request.POST['talk']
-            Message.objects.create(user=User.objects.get(username=send_to), message=request.POST['message'],
-                                   date=datetime.now())
-            Chat.objects.filter(belong=self.request.user, target__username=send_to)
-
-        return HttpResponseRedirect(reverse('base:index'))
 
 
 class GetMessages(LoginRequiredMixin, View):
@@ -87,7 +75,20 @@ class SendMessage(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         chat_id = request.POST.get('chat_id')
         Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")), target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"), date=datetime.now(), chat=Chat.objects.get(id=chat_id))
-        Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")), target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"), date=datetime.now(), chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target, target=Chat.objects.get(id=chat_id).belong))
+        try:
+            Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
+                                   message=request.POST.get("message"),
+                                   date=datetime.now(),
+                                   chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target,
+                                                         target=Chat.objects.get(id=chat_id).belong))
+
+        except:
+            Chat.objects.create(belong=Chat.objects.get(id=chat_id).target, target=User.objects.get(id=request.POST.get("source_id")))
+            Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
+                                   target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"),
+                                   date=datetime.now(),
+                                   chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target,
+                                                         target=Chat.objects.get(id=chat_id).belong))
         return JsonResponse({"success": True})
 
 
@@ -104,9 +105,6 @@ class CreateChat(View):
             target = User.objects.get(username=request.POST.get('target'))
             belong = self.request.user
             chat = Chat.objects.create(belong=belong, target=target)
-        else:
-            belong = User.objects.get(username=request.POST.get('belong'))
-            target = self.request.user
-            chat = Chat.objects.create(belong=belong, target=target)
 
-        return JsonResponse({"chat_id": chat.id})
+            return JsonResponse({"chat_id": chat.id})
+        return JsonResponse({"success": False})

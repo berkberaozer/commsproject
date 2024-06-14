@@ -42,6 +42,31 @@
         </div>
     </div>
     <script>
+
+        let activeRoomId = null;
+        const chatSockets = {};
+
+        {% for chat in user_chats %}
+            createChatSocket({{chat.id}});
+        {% endfor %}
+
+        function createChatSocket(chat_id) {
+            const chatSocket = new WebSocket(
+                `ws://${window.location.host}/base/${chat_id}/`
+            );
+
+            chatSocket.onmessage = function(e) {
+                loadChat(chat_id);
+            };
+
+            chatSocket.onclose = function(e) {
+                console.error(`Chat socket for ${chat_id} closed unexpectedly`);
+            };
+
+            chatSockets[chat_id] = chatSocket;
+        }
+
+        //makes the ajax django auth compatible
         $.ajaxSetup({
         beforeSend: function(xhr, settings) {
              function getCookie(name) {
@@ -50,7 +75,7 @@
                      let cookies = document.cookie.split(';');
                      for (let i = 0; i < cookies.length; i++) {
                          let cookie = jQuery.trim(cookies[i]);
-                         // Does this cookie string begin with the name we want?
+
                          if (cookie.substring(0, name.length + 1) === (name + '=')) {
                              cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
                              break;
@@ -60,7 +85,7 @@
                  return cookieValue;
              }
              if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
-                 // Only send the token to relative URLs i.e. locally.
+
                  xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
              }
          }
@@ -93,6 +118,7 @@
                 }
             });
 
+            console.log(chatId);
             let chatHeader = document.getElementById('chat-header');
             chatHeader.textContent = document.querySelector('.chat-list li[data-chat="' + chatId + '"]').textContent;
         }
@@ -110,15 +136,13 @@
         });
 
         document.getElementById('send-button').addEventListener('click', function() {
-            console.log("clicked");
             let messageInput = document.getElementById('message-input');
             let messageText = messageInput.value.trim();
             let chatMessages = document.getElementById('chat-messages');
+            let activeChat = document.querySelector('.chat-list li.active');
+            let activeChatId = activeChat.getAttribute('data-chat');
 
             if (messageText !== '') {
-                let activeChat = document.querySelector('.chat-list li.active')
-                let activeChatId = activeChat.getAttribute('data-chat');
-
                 if(activeChat.hasAttribute("new")) {
                     $.ajax({
                     type: "POST",
@@ -129,28 +153,19 @@
                     dataType: "json",
                     success: function (data) {
                         activeChat.removeAttribute("new");
+                        createChatSocket([data["chat_id"]]);
                     },
                     failure: function () {
 
                     },
                 });
                 }
-
-                $.ajax({
-                    type: "POST",
-                    url: "{% url 'base:send_message' %}",
-                    data: {
-                        "chat_id": activeChatId,
-                        "message": messageText,
-                        "source_id": {{ request.user.id }},
-                    },
-                    dataType: "json",
-                    success: function (data) {
-                    },
-                    failure: function () {
-
-                    }
-                });
+                console.log(chatSockets);
+                console.log(activeChatId);
+                chatSockets[activeChatId].send(JSON.stringify({
+                        'message': messageText,
+                        'source_id': {{ request.user.id }},
+                }));
 
                 let messageElement = document.createElement('div');
                 messageElement.classList.add('message', 'sent');
