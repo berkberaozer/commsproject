@@ -18,7 +18,7 @@ class Chat(models.Model):
     UniqueConstraint(fields=('belong', 'to'), name='unique_person')
 
     def __str__(self):
-        return self.target.__str__()
+        return self.belong.__str__() + "-" + self.target.__str__()
 
 
 class Message(models.Model):
@@ -27,6 +27,7 @@ class Message(models.Model):
     message = models.TextField()
     date = models.DateTimeField(auto_now_add=True)
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
+    hasRead = models.BooleanField(default=False)
 
     def __str__(self):
         return self.message

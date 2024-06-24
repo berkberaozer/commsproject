@@ -67,7 +67,7 @@ class GetMessages(LoginRequiredMixin, View):
 
     def get(self, request, *args, **kwargs):
         chat_id = self.request.GET.get('chat')
-        queryset = Message.objects.filter(chat=chat_id).values()
+        queryset = Message.objects.filter(chat=chat_id).order_by('date').values()
         return JsonResponse({"messages": list(queryset)})
 
 
@@ -107,4 +107,5 @@ class CreateChat(View):
             chat = Chat.objects.create(belong=belong, target=target)
 
             return JsonResponse({"chat_id": chat.id})
-        return JsonResponse({"success": False})
+        else:
+            return JsonResponse({"success": False})

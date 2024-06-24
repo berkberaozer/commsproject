@@ -23,7 +23,8 @@
             <ul class="chat-list" id="chat-list">
                 {% if user_chats.count > 0 %}
                         {% for chat in user_chats %}
-                        <li data-chat="{{ chat.id }}" class="chat">{{chat}}</li>
+                        <li data-chat="{{ chat.id }}" class="chat">{% if chat.target.username == request.user.username %}
+                            {{ chat.belong }} {% else %} {{ chat.target }} {% endif %}</li>
                         {% endfor %}
                 {% else %}
                     <li id="no-chats-banner">No chats are available.</li>
@@ -46,14 +47,35 @@
         let activeRoomId = null;
         const chatSockets = {};
 
+        userSocket = createUserSocket("{{ request.user.username }}")
         {% for chat in user_chats %}
             createChatSocket({{chat.id}});
         {% endfor %}
 
+        function createUserSocket(username) {
+            const userSocket = new WebSocket(
+                `ws://${window.location.host}/base/user/${username}/`
+            );
+
+            userSocket.onmessage = function(e) {
+                let chatList = document.getElementById("chat-list");
+                let chatElement = document.createElement("li")
+                chatElement.setAttribute("data-chat", e["data"]["chat_id"]);
+                chatElement.classList.add("chat");
+                chatList.insertBefore(chatElement, chatList.firstChild);
+            }
+
+            userSocket.onclose = function(e) {
+                console.error(`Chat socket for ${username} closed unexpectedly`);
+            };
+        }
+
         function createChatSocket(chat_id) {
             const chatSocket = new WebSocket(
-                `ws://${window.location.host}/base/${chat_id}/`
+                `ws://${window.location.host}/base/chat/${chat_id}/`
             );
+
+            chatSocket.chat_id = chat_id;
 
             chatSocket.onmessage = function(e) {
                 loadChat(chat_id);
@@ -66,8 +88,33 @@
             chatSockets[chat_id] = chatSocket;
         }
 
+        function sendMessage(socket, message, source) {
+            waitForSocketConnection(socket, function() {
+                socket.send(JSON.stringify({
+                'message': message,
+                'source_id': source,
+                }));
+            });
+        }
+
+        function waitForSocketConnection(socket, callback) {
+            setTimeout(
+                function() {
+                    if(socket.readyState === 1) {
+                        if(callback !== undefined) {
+                            callback();
+                        }
+                        return;
+                    } else {
+                        waitForSocketConnection(socket, callback);
+                    }
+                }, 5)
+        }
+
+
         //makes the ajax django auth compatible
         $.ajaxSetup({
+
         beforeSend: function(xhr, settings) {
              function getCookie(name) {
                  let cookieValue = null;
@@ -88,7 +135,7 @@
 
                  xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
              }
-         }
+         }, async: false,
         });
 
         function loadChat(chatId) {
@@ -118,7 +165,6 @@
                 }
             });
 
-            console.log(chatId);
             let chatHeader = document.getElementById('chat-header');
             chatHeader.textContent = document.querySelector('.chat-list li[data-chat="' + chatId + '"]').textContent;
         }
@@ -148,32 +194,52 @@
                     type: "POST",
                     url: "{% url 'base:create_chat' %}",
                     data: {
-                        "belong": activeChat.textContent,
+                        "target": activeChat.textContent,
                     },
                     dataType: "json",
                     success: function (data) {
                         activeChat.removeAttribute("new");
-                        createChatSocket([data["chat_id"]]);
+                        activeChat.setAttribute("data-chat", data["chat_id"]);
+                        activeChatId = activeChat.getAttribute('data-chat');
+                        createChatSocket(data["chat_id"]);
+                        console.log(chatSockets[activeChatId]);
                     },
                     failure: function () {
 
                     },
-                });
-                }
-                console.log(chatSockets);
-                console.log(activeChatId);
-                chatSockets[activeChatId].send(JSON.stringify({
-                        'message': messageText,
+                    complete: function() {
+                        userSocket.send(JSON.stringify({
                         'source_id': {{ request.user.id }},
-                }));
+                        'chat_id': data["chat_id"],
+                        }));
+                        sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }});
 
-                let messageElement = document.createElement('div');
-                messageElement.classList.add('message', 'sent');
-                messageElement.textContent = messageText;
+                        let messageElement = document.createElement('div');
+                        messageElement.classList.add('message', 'sent');
+                        messageElement.textContent = messageText;
 
-                chatMessages.appendChild(messageElement);
-                messageInput.value = '';
-                messageInput.focus();
+                        chatMessages.appendChild(messageElement);
+                        messageInput.value = '';
+                        messageInput.focus();
+                    },
+                    });
+                } else {
+                    console.log("complete");
+                    console.log(activeChatId);
+                    chatSockets[activeChatId].send(JSON.stringify({
+                    'message': messageText,
+                    'source_id': {{ request.user.id }},
+                    }));
+                    console.log(chatSockets[activeChatId]);
+
+                    let messageElement = document.createElement('div');
+                    messageElement.classList.add('message', 'sent');
+                    messageElement.textContent = messageText;
+
+                    chatMessages.appendChild(messageElement);
+                    messageInput.value = '';
+                    messageInput.focus();
+                }
             }
         });
 
@@ -236,70 +302,43 @@
                                     }
                                 })
                                 if (flag) {
-                                    $.ajax({
-                                        type: "POST",
-                                        url: "{% url 'base:create_chat' %}",
-                                        data: {
-                                            "target": username,
-                                        },
-                                        dataType: "json",
-                                        success: function (data) {
-                                            let chatList = document.getElementById("chat-list");
+                                    let chatList = document.getElementById("chat-list");
 
-                                            let chatElement = document.createElement('li');
-                                            chatElement.setAttribute("data-chat", data["chat_id"]);
-                                            chatElement.setAttribute("new", "true");
-                                            chatElement.innerText = username;
+                                    let chatElement = document.createElement('li');
+                                    chatElement.setAttribute("data-chat", data["chat_id"]);
+                                    chatElement.setAttribute("new", "true");
+                                    chatElement.innerText = username;
 
-                                            let activeChat = document.querySelector('.chat-list li.active');
-                                            if (activeChat) {
-                                                activeChat.classList.remove('active');
-                                            }
+                                    let activeChat = document.querySelector('.chat-list li.active');
+                                    if (activeChat) {
+                                        activeChat.classList.remove('active');
+                                    }
+                                    chatElement.classList.add("chat", "active");
+                                    chatList.appendChild(chatElement);
 
-                                            chatElement.classList.add("chat", "active");
-                                            chatList.appendChild(chatElement);
-
-                                            loadChat(data["chat_id"]);
-                                        },
-                                        failure: function () {
-
-                                        },
-                                        complete: function () {
-                                            userList.innerHTML = '';
-                                        }
-                                    });
+                                    loadChat(data["chat_id"]);
+                                    userList.innerHTML = '';
                                 }
                             } else {
-                                $.ajax({
-                                    type: "POST",
-                                    url: "{% url 'base:create_chat' %}",
-                                    data: {
-                                        "target": username,
-                                    },
-                                    dataType: "json",
-                                    success: function (data) {
-                                        let chatList = document.getElementById("chat-list");
+                                let chatList = document.getElementById("chat-list");
 
-                                        let chatElement = document.createElement('li');
-                                        chatElement.setAttribute("data-chat", data["chat_id"]);
-                                        chatElement.setAttribute("new", "True");
-                                        chatElement.innerText = username;
+                                let chatElement = document.createElement('li');
+                                chatElement.setAttribute("data-chat", data["chat_id"]);
+                                chatElement.setAttribute("new", "true");
+                                chatElement.innerText = username;
 
-                                        chatElement.classList.add("chat", "active");
-                                        chatList.appendChild(chatElement);
+                                let activeChat = document.querySelector('.chat-list li.active');
+                                if (activeChat) {
+                                    activeChat.classList.remove('active');
+                                }
+                                chatElement.classList.add("chat", "active");
+                                chatList.appendChild(chatElement);
 
-                                        loadChat(data["chat_id"]);
+                                loadChat(data["chat_id"]);
+                                userList.innerHTML = '';
 
-                                        let text = document.querySelector("#no-chats-banner");
-                                        text.remove();
-                                    },
-                                    failure: function () {
-
-                                    },
-                                    complete: function () {
-                                        userList.innerHTML = '';
-                                    }
-                                });
+                                let text = document.querySelector("#no-chats-banner");
+                                text.remove();
                             }
                         }));
                     },
