@@ -65,15 +65,15 @@ class UserConsumer(WebsocketConsumer):
 
     def receive(self, text_data):
         data = json.loads(text_data)
-        source_id = data["source_id"]
+        source_username = data["source_username"]
         chat_id = data["chat_id"]
-        print(self.username + "received")
+
         async_to_sync(self.channel_layer.group_send)(
-            self.username, {"type": "chat.message", "source_id": source_id, "chat_id": chat_id}
+            self.username, {"type": "chat.message", "source_username": source_username, "chat_id": chat_id}
         )
 
     def chat_message(self, event):
-        source_id = event["source_id"]
+        source_username = event["source_username"]
         chat_id = event["chat_id"]
-        print(self.username + "chat_message")
-        self.send(text_data=json.dumps({"source_id": source_id, "chat_id": chat_id}))
+
+        self.send(text_data=json.dumps({"source_username": source_username, "chat_id": chat_id}))

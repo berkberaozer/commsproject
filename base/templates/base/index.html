@@ -47,7 +47,7 @@
         let activeRoomId = null;
         const chatSockets = {};
 
-        userSocket = createUserSocket("{{ request.user.username }}")
+        const userSocket = createUserSocket("{{ request.user.username }}")
         {% for chat in user_chats %}
             createChatSocket({{chat.id}});
         {% endfor %}
@@ -58,16 +58,31 @@
             );
 
             userSocket.onmessage = function(e) {
-                let chatList = document.getElementById("chat-list");
-                let chatElement = document.createElement("li")
-                chatElement.setAttribute("data-chat", e["data"]["chat_id"]);
-                chatElement.classList.add("chat");
-                chatList.insertBefore(chatElement, chatList.firstChild);
-            }
+                if("{{ request.user.username }}" !== JSON.parse(e["data"])["source_username"]) {
+                    let newChat = document.querySelector("data-chat", JSON.parse(e["data"])["chat_id"]);
+                    if (newChat == null) {
+                        let chatList = document.getElementById("chat-list");
+                        let chatElement = document.createElement("li")
+                        chatElement.setAttribute("data-chat", JSON.parse(e["data"])["chat_id"]);
+                        chatElement.classList.add("chat");
+                        chatElement.textContent = JSON.parse(e["data"])["source_username"];
+                        chatList.insertBefore(chatElement, chatList.firstChild);
+
+                        createChatSocket(JSON.parse(e["data"])["chat_id"]);
+
+                        let text = document.querySelector("#no-chats-banner");
+                        if(text) {
+                            text.remove();
+                        }
+                    }
+                }
+            };
 
             userSocket.onclose = function(e) {
                 console.error(`Chat socket for ${username} closed unexpectedly`);
             };
+
+            return userSocket;
         }
 
         function createChatSocket(chat_id) {
@@ -93,6 +108,15 @@
                 socket.send(JSON.stringify({
                 'message': message,
                 'source_id': source,
+                }));
+            });
+        }
+
+        function sendChatCreationMessage(socket, chat_id, source) {
+            waitForSocketConnection(socket, function() {
+                socket.send(JSON.stringify({
+                'chat_id': chat_id,
+                'source_username': source,
                 }));
             });
         }
@@ -202,16 +226,9 @@
                         activeChat.setAttribute("data-chat", data["chat_id"]);
                         activeChatId = activeChat.getAttribute('data-chat');
                         createChatSocket(data["chat_id"]);
-                        console.log(chatSockets[activeChatId]);
-                    },
-                    failure: function () {
+                        let recipientSocket = createUserSocket(activeChat.textContent);
 
-                    },
-                    complete: function() {
-                        userSocket.send(JSON.stringify({
-                        'source_id': {{ request.user.id }},
-                        'chat_id': data["chat_id"],
-                        }));
+                        sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
                         sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }});
 
                         let messageElement = document.createElement('div');
@@ -224,13 +241,10 @@
                     },
                     });
                 } else {
-                    console.log("complete");
-                    console.log(activeChatId);
                     chatSockets[activeChatId].send(JSON.stringify({
                     'message': messageText,
                     'source_id': {{ request.user.id }},
                     }));
-                    console.log(chatSockets[activeChatId]);
 
                     let messageElement = document.createElement('div');
                     messageElement.classList.add('message', 'sent');
