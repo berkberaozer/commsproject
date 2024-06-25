@@ -37,8 +37,8 @@
             <div class="chat-input">
                 {% csrf_token %}
                 <label for="message-input"></label>
-                <input type="text" id="message-input" placeholder="Type your message here...">
-                <button id="send-button">Send</button>
+                <input type="text" id="message-input" placeholder="Type your message here..." disabled>
+                <button id="send-button" disabled>Send</button>
             </div>
         </div>
     </div>
@@ -193,15 +193,37 @@
             chatHeader.textContent = document.querySelector('.chat-list li[data-chat="' + chatId + '"]').textContent;
         }
 
+        function clearChat() {
+            let chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML = '';
+
+            let chatHeader = document.getElementById('chat-header');
+            chatHeader.innerHTML = '';
+        }
+
         document.getElementById('chat-list').addEventListener('click', function(event) {
             if(event.target.id !== "no-chats-banner" && event.target.tagName === 'LI') {
+                let textInput = document.getElementById("message-input");
                 let activeChat = document.querySelector('.chat-list li.active');
-                if (activeChat) {
+                let sendButton = document.getElementById("send-button");
+
+                if (event.target.classList.contains("active")) {
                     activeChat.classList.remove('active');
 
+                    textInput.setAttribute("disabled", true);
+                    sendButton.setAttribute("disabled", true);
+                    clearChat();
                 }
-                event.target.classList.add('active');
-                loadChat(event.target.getAttribute('data-chat'));
+                else {
+                    textInput.removeAttribute("disabled");
+                    sendButton.removeAttribute("disabled");
+
+                    event.target.classList.add("active");
+                    loadChat(event.target.getAttribute('data-chat'));
+                }
+                if(activeChat) {
+                    activeChat.classList.remove("active");
+                }
             }
         });
 
