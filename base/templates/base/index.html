@@ -1,4 +1,6 @@
 {% load static %}
+{% load tz %}
+{% localtime on %}
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
 <link rel="stylesheet" href="{% static 'base/style.css' %}">
 
@@ -43,7 +45,8 @@
         </div>
     </div>
     <script>
-
+        let textInput = document.getElementById("message-input");
+        let sendButton = document.getElementById("send-button");
         let activeRoomId = null;
         const chatSockets = {};
 
@@ -162,10 +165,41 @@
          }, async: false,
         });
 
+        function getDateElement(date) {
+            let now = new Date();
+            let weekBefore = new Date();
+            let dateElement = document.createElement("div");
+            dateElement.classList.add("messageDate");
+
+            weekBefore.setDate(weekBefore.getDate() - 7)
+            weekBefore.setHours(0,0,0);
+            if(date.valueOf() > weekBefore.valueOf()) {
+                let weekDayIndex = date.getDay();
+                let daysOfTheWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                let dayOfTheWeek = daysOfTheWeek[weekDayIndex];
+
+                if (now.getDay() === weekDayIndex) {
+                    dayOfTheWeek = "Today";
+                }
+                else if (weekDayIndex === 6 && now.getDay() === 0 || weekDayIndex === now.getDay() - 1) {
+                    dayOfTheWeek = "Yesterday";
+                }
+
+                dateElement.textContent = dayOfTheWeek;
+            } else {
+                dateElement.textContent = date.toLocaleString('us-EN').substring(0,11);
+            }
+
+            return dateElement;
+        }
+
         function loadChat(chatId) {
             let chatMessages = document.getElementById('chat-messages');
             chatMessages.innerHTML = '';
             let messageElement;
+            let messageText;
+            let messageTime;
+            let dateElement;
 
             $.ajax({
                 type: "GET",
@@ -176,11 +210,39 @@
                 dataType: "json",
                 success: function (data) {
                     let messages=data["messages"];
+                    let now = new Date();
+                    let flag = true;
+                    let currentDateIndicator = new Date(messages[0].date);
 
-                    for(let i=0; i<messages.length; i++) {
+                    for (let i = 0; i < messages.length; i++) {
+                        let date = new Date(messages[i].date);
+
+                        if (currentDateIndicator.getDay() !== date.getDay() | currentDateIndicator.getMonth() !== date.getMonth() | currentDateIndicator.getFullYear() !== date.getFullYear()) {
+                            flag = true;
+                        }
+                        if (flag) {
+                            dateElement = getDateElement(date);
+                            chatMessages.appendChild(dateElement);
+
+                            flag = false;
+                            currentDateIndicator = date;
+                        }
+                        currentDateIndicator = date;
+
                         messageElement = document.createElement('div');
+                        messageText = document.createElement('p');
+                        messageTime = document.createElement('span');
+
                         messageElement.classList.add('message', messages[i].source_id === {{ request.user.id }} ? 'sent' : 'received');
-                        messageElement.textContent = messages[i].message;
+                        messageText.classList.add('messageText');
+                        messageTime.classList.add('messageTime');
+                        messageText.textContent = messages[i].message;
+
+                        console.log();
+
+                        messageTime.textContent = date.toLocaleTimeString('en-GB', { hour: "numeric", minute: "numeric"});
+                        messageElement.appendChild(messageText);
+                        messageElement.appendChild(messageTime);
                         chatMessages.appendChild(messageElement);
                     }
                 },
@@ -203,9 +265,7 @@
 
         document.getElementById('chat-list').addEventListener('click', function(event) {
             if(event.target.id !== "no-chats-banner" && event.target.tagName === 'LI') {
-                let textInput = document.getElementById("message-input");
                 let activeChat = document.querySelector('.chat-list li.active');
-                let sendButton = document.getElementById("send-button");
 
                 if (event.target.classList.contains("active")) {
                     activeChat.classList.remove('active');
@@ -371,6 +431,8 @@
                                 chatList.appendChild(chatElement);
 
                                 loadChat(data["chat_id"]);
+                                textInput.removeAttribute("disabled");
+                                sendButton.removeAttribute("disabled");
                                 userList.innerHTML = '';
 
                                 let text = document.querySelector("#no-chats-banner");
@@ -393,3 +455,4 @@
         });
     </script>
 </body>
+{% endlocaltime %}

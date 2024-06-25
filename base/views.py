@@ -109,3 +109,4 @@ class CreateChat(View):
             return JsonResponse({"chat_id": chat.id})
         else:
             return JsonResponse({"success": False})
+

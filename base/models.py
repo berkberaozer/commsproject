@@ -25,7 +25,7 @@ class Message(models.Model):
     id = models.AutoField(primary_key=True)
     source = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_messages")
     message = models.TextField()
-    date = models.DateTimeField(auto_now_add=True)
+    date = models.DateTimeField()
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
     hasRead = models.BooleanField(default=False)
 
