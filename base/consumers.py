@@ -4,7 +4,9 @@ from datetime import datetime
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
 from .models import User, Chat, Message
+import redis
 
+r = redis.StrictRedis(host='localhost', port=6379)
 
 class ChatConsumer(WebsocketConsumer):
     def __init__(self, *args, **kwargs):
@@ -31,18 +33,26 @@ class ChatConsumer(WebsocketConsumer):
         message = data["message"]
         date = datetime.now()
 
+        object = Message.objects.create(source=User.objects.get(id=data["source_id"]), message=data["message"], date=date,
+                               chat=Chat.objects.get(id=self.chat_id))
+        object.save()
+
         async_to_sync(self.channel_layer.group_send)(
-            self.chat_id, {"type": "chat.message", "source_id": source_id, "message": message, "date": date.__str__()}
+            self.chat_id, {"type": "chat.message", "source_id": source_id, "message": message, "date": date.__str__(), "id": object.id, "hasReached": object.hasReached, "hasRead": object.hasRead
+                           , "chat_id": object.chat_id}
         )
 
-        Message.objects.create(source=User.objects.get(id=data["source_id"]), message=data["message"], date=date,
-                               chat=Chat.objects.get(id=self.chat_id))
 
     def chat_message(self, event):
         source_id = event["source_id"]
         message = event["message"]
+        date = event["date"]
+        id = event["id"]
+        chat_id = event["chat_id"]
+        hasReached = event["hasReached"]
+        hasRead = event["hasRead"]
 
-        self.send(text_data=json.dumps({"source_id": source_id, "message": message}))
+        self.send(text_data=json.dumps({"source_id": source_id, "message": message, "date": date, "chat_id": chat_id, "id": id, "hasReached": hasReached, "hasRead": hasRead}))
 
 
 class UserConsumer(WebsocketConsumer):

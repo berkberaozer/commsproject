@@ -32,7 +32,7 @@ class Message(models.Model):
 
 
     def __str__(self):
-        return self.message
+        return self.source.__str__() + ": " + self.message + " to " + self.chat.__str__()
 
 
 class Group(models.Model):
