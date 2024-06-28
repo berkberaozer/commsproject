@@ -192,7 +192,6 @@
                  return cookieValue;
              }
              if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
-
                  xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
              }
          }, async: false,
@@ -294,18 +293,16 @@
             });
             }
 
-            if(chatMessages.scrollHeight === chatMessages.clientHeight) {
-                chatMessages.dispatchEvent(new CustomEvent("scrollend"));
-            }
+            chatMessages.dispatchEvent(new CustomEvent("scrollend"));
 
             let chatHeader = document.getElementById('chat-header');
             chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
             let firstUnread = document.querySelector('.message.received[hasread="false"]');
             chatMessages.scrollTo({top: chatMessages.scrollHeight, behavior: "smooth"})
             if(firstUnread != null) {
-                chatMessages.scrollTo({top: firstUnread.scrollTop, behavior: "smooth"});
+                chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight, behavior: "instant"});
             } else {
-                chatMessages.scrollTo(0, chatMessages.scrollHeight);
+                chatMessages.scrollTo({top : chatMessages.scrollHeight, behavior: "instant"});
             }
         }
 
