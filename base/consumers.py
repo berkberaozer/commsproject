@@ -3,6 +3,8 @@ from datetime import datetime
 
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
+from django.utils import timezone
+
 from .models import User, Chat, Message
 import redis
 
@@ -31,7 +33,7 @@ class ChatConsumer(WebsocketConsumer):
         data = json.loads(text_data)
         source_id = data["source_id"]
         message = data["message"]
-        date = datetime.now()
+        date = timezone.now()
 
         object = Message.objects.create(source=User.objects.get(id=data["source_id"]), message=data["message"], date=date,
                                chat=Chat.objects.get(id=self.chat_id))
