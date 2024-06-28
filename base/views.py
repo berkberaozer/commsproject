@@ -1,9 +1,9 @@
 from django.contrib import messages
-import json
-from django.shortcuts import render, redirect
+from django.core.exceptions import ObjectDoesNotExist
+from django.shortcuts import render
 from django.http import HttpResponseRedirect, HttpResponse, JsonResponse
 from django.urls import reverse
-from django.views import (View, generic)
+from django.views import View
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
@@ -68,13 +68,16 @@ class GetMessages(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         chat_id = self.request.GET.get('chat')
         queryset = Message.objects.filter(chat=chat_id).order_by('date').values()
+        queryset.update(hasReached=True)
         return JsonResponse({"messages": list(queryset)})
 
 
 class SendMessage(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         chat_id = request.POST.get('chat_id')
-        Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")), target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"), date=datetime.now(), chat=Chat.objects.get(id=chat_id))
+        Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
+                               target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"),
+                               date=datetime.now(), chat=Chat.objects.get(id=chat_id))
         try:
             Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
                                    message=request.POST.get("message"),
@@ -82,8 +85,9 @@ class SendMessage(LoginRequiredMixin, View):
                                    chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target,
                                                          target=Chat.objects.get(id=chat_id).belong))
 
-        except:
-            Chat.objects.create(belong=Chat.objects.get(id=chat_id).target, target=User.objects.get(id=request.POST.get("source_id")))
+        except ObjectDoesNotExist:
+            Chat.objects.create(belong=Chat.objects.get(id=chat_id).target,
+                                target=User.objects.get(id=request.POST.get("source_id")))
             Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
                                    target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"),
                                    date=datetime.now(),
@@ -95,7 +99,10 @@ class SendMessage(LoginRequiredMixin, View):
 class SearchUser(View):
     def get(self, request, *args, **kwargs):
         searched_username = request.GET.get('username')
-        users = User.objects.filter(Q(username__contains=searched_username) & ~Q(username = self.request.user.username)).values('first_name', 'last_name', 'id', 'username')
+        users = User.objects.filter(
+            Q(username__contains=searched_username) & ~Q(username=self.request.user.username)).values('first_name',
+                                                                                                      'last_name', 'id',
+                                                                                                      'username')
         return JsonResponse({"users": list(users)})
 
 
@@ -116,5 +123,14 @@ class ReadMessage(View):
         if request.POST.get('id'):
             message = Message.objects.get(id=request.POST.get('id'))
             message.hasRead = True
+            message.save()
+            return JsonResponse({"success": True})
+
+
+class ReachedMessage(View):
+    def post(self, request, *args, **kwargs):
+        if request.POST.get('id'):
+            message = Message.objects.get(id=request.POST.get('id'))
+            message.hasReached = True
             message.save()
             return JsonResponse({"success": True})

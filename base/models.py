@@ -30,7 +30,6 @@ class Message(models.Model):
     hasReached = models.BooleanField(default=False)
     hasRead = models.BooleanField(default=False)
 
-
     def __str__(self):
         return self.source.__str__() + ": " + self.message + " to " + self.chat.__str__()
 

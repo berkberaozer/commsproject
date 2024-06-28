@@ -47,6 +47,29 @@
         </div>
     </div>
     <script>
+        //makes the ajax django auth compatible
+        $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+             function getCookie(name) {
+                 let cookieValue = null;
+                 if (document.cookie && document.cookie !== '') {
+                     let cookies = document.cookie.split(';');
+                     for (let i = 0; i < cookies.length; i++) {
+                         let cookie = jQuery.trim(cookies[i]);
+
+                         if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                             cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                             break;
+                         }
+                     }
+                 }
+                 return cookieValue;
+             }
+             if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
+                 xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+             }
+         }, async: false,
+        });
         let textInput = document.getElementById("message-input");
         let sendButton = document.getElementById("send-button");
         let activeRoomId = null;
@@ -100,7 +123,7 @@
             }
 
             userSocket.onclose = function(e) {
-                console.error(`Chat socket for ${username} closed unexpectedly`);
+                console.error('Chat socket for ${username} closed unexpectedly, ${e}');
             };
 
             return userSocket;
@@ -116,26 +139,38 @@
             chatSocket.onmessage = function(e) {
                 let data = JSON.parse(e["data"]);
 
-                if({{ request.user.id }} !== 0) {
-                    let activeChat = document.querySelector('.chat-list li.active');
-                    let chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
+                let activeChat = document.querySelector('.chat-list li.active');
+                let chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
 
-                    if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
-                        let chatMessages = document.getElementById('chat-messages');
-                        loadChat(chat_id);
-                        chatMessages.scrollTo(0, chatMessages.scrollHeight);
-                    } else {
-                        if (chat_notification.style.display === "none") {
-                            chat_notification.style.display = ""
-                            chat_notification.textContent = "0";
-                        }
-                        chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
+                if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
+                    let chatMessages = document.getElementById('chat-messages');
+                    loadChat(chat_id);
+                    chatMessages.scrollTo(0, chatMessages.scrollHeight);
+                } else {
+                    if (chat_notification.style.display === "none") {
+                        chat_notification.style.display = ""
+                        chat_notification.textContent = "0";
                     }
+                    chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
+                }
+
+                if(data.source_id !== {{ request.user.id }}) {
+                    $.ajax({
+                        type: "POST",
+                        url: "{% url 'base:reached_message' %}",
+                        data: {
+                            "id": data.id,
+                        },
+                        dataType: "json",
+                        success: function(data) {
+
+                        }
+                    });
                 }
             };
 
             chatSocket.onclose = function(e) {
-                console.error(`Chat socket for ${chat_id} closed unexpectedly`);
+                console.error('Chat socket for ${chat_id} closed unexpectedly, ${e}');
             };
 
             chatSockets[chat_id] = chatSocket;
@@ -166,36 +201,11 @@
                         if(callback !== undefined) {
                             callback();
                         }
-                        return;
                     } else {
                         waitForSocketConnection(socket, callback);
                     }
                 }, 5)
         }
-
-        //makes the ajax django auth compatible
-        $.ajaxSetup({
-        beforeSend: function(xhr, settings) {
-             function getCookie(name) {
-                 let cookieValue = null;
-                 if (document.cookie && document.cookie !== '') {
-                     let cookies = document.cookie.split(';');
-                     for (let i = 0; i < cookies.length; i++) {
-                         let cookie = jQuery.trim(cookies[i]);
-
-                         if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                             cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                             break;
-                         }
-                     }
-                 }
-                 return cookieValue;
-             }
-             if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
-                 xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
-             }
-         }, async: false,
-        });
 
         function getDateElement(date) {
             let now = new Date();
@@ -262,7 +272,6 @@
                 dataType: "json",
                 success: function (data) {
                     let messages=data["messages"];
-                    let now = new Date();
 
                     if(messages.length > 0) {
                         let flag = true;
@@ -328,8 +337,8 @@
                 if (target.classList.contains("active")) {
                     activeChat.classList.remove('active');
 
-                    textInput.setAttribute("disabled", true);
-                    sendButton.setAttribute("disabled", true);
+                    textInput.setAttribute("disabled", "true");
+                    sendButton.setAttribute("disabled", "true");
                     clearChat();
                 }
                 else {
@@ -353,7 +362,7 @@
             messages.forEach(message => {
                 if (message.offsetTop - event.target.offsetTop < event.target.scrollTop + event.target.clientHeight - message.scrollHeight) {
                     message.setAttribute("hasread", 'true');
-                    notification.textContent = parseInt(notification.textContent) - 1;
+                    notification.textContent = parseInt(notification.textContent) - 1 + "";
                     if(parseInt(notification.textContent) === 0) {
                         notification.style.display = "none";
                     }
@@ -434,7 +443,7 @@
             let notificationElement = document.createElement("span");
             notificationElement.setAttribute("chat-id", chat_id);
             notificationElement.style.display = "none";
-            notificationElement.textContent = 0;
+            notificationElement.textContent = "0";
             notificationElement.classList.add("chat-notification");
 
             chatElement.appendChild(usernameElement);
