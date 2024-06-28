@@ -12,6 +12,7 @@ body {
     height: 100vh;
     background-color: #f0f0f0;
 }
+
 .container {
     width: 800px;
     max-width: 100%;
@@ -22,6 +23,7 @@ body {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     overflow: hidden;
 }
+
 .sidebar {
     width: 30%;
     background: #343a40;
@@ -30,16 +32,19 @@ body {
     flex-direction: column;
     overflow-y: auto;
 }
+
 .chat-list {
     list-style: none;
     margin: 0;
     padding: 0;
 }
+
 .chat-list li {
     padding: 15px;
     border-bottom: 1px solid #495057;
     cursor: pointer;
 }
+
 .chat-list li:hover, .chat-list li.active {
     background: #495057;
 }
@@ -101,7 +106,7 @@ body {
 
 .messageText {
     margin: 0;
-    padding-right: 40px;
+    padding-right: 50px;
 }
 
 .messageTime {
@@ -134,12 +139,14 @@ body {
     padding: 10px;
     background: #f8f9fa;
 }
+
 .chat-input input {
     flex: 1;
     padding: 10px;
     border: 1px solid #ced4da;
     border-radius: 4px;
 }
+
 .chat-input button {
     margin-left: 10px;
     padding: 10px 15px;
@@ -149,6 +156,7 @@ body {
     border-radius: 4px;
     cursor: pointer;
 }
+
 .chat-input button:hover {
     background: #0056b3;
 }
@@ -161,4 +169,12 @@ body {
 
 .user a:hover {
     background: transparent no-repeat 3px 170px;
+}
+
+.message-status {
+    font-size: 10px;
+}
+
+.blue {
+    color: #007bff;
 }

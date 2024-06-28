@@ -97,7 +97,6 @@
             );
 
             userSocket.onmessage = function(e) {
-                console.log(e);
                 if ("{{ request.user.username }}" !== JSON.parse(e["data"])["source_username"]) {
                     let chat_id = JSON.parse(e['data'])['chat_id'];
                     let username = JSON.parse(e["data"])["source_username"];
@@ -144,8 +143,15 @@
 
                 if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
                     let chatMessages = document.getElementById('chat-messages');
-                    loadChat(chat_id);
+                    chatMessages.appendChild(getMessageElement(data));
+                    //loadChat(chat_id);
+
                     chatMessages.scrollTo(0, chatMessages.scrollHeight);
+
+                    if(chatMessages.scrollHeight > chatMessages.offsetTop) {
+                        chatMessages.dispatchEvent(new CustomEvent("scrollend"));
+                    }
+
                 } else {
                     if (chat_notification.style.display === "none") {
                         chat_notification.style.display = ""
@@ -239,20 +245,40 @@
             let messageElement = document.createElement('div');
             let messageText = document.createElement('p');
             let messageTime = document.createElement('span');
+            let container = document.createElement('div');
 
             messageElement.classList.add('message', message.source_id === {{ request.user.id }} ? 'sent' : 'received');
             messageElement.setAttribute('hasRead', message["hasRead"]);
             messageElement.setAttribute('hasReached', message["hasReached"]);
+            messageElement.setAttribute('hasSent', message["hasSent"]);
+
             messageText.classList.add('messageText');
             messageTime.classList.add('messageTime');
+
             messageText.textContent = message.message;
 
             let date = new Date(message.date);
             messageTime.textContent = date.toLocaleTimeString('en-GB', { hour: "numeric", minute: "numeric"});
             messageElement.appendChild(messageText);
-            messageElement.appendChild(messageTime);
             messageElement.setAttribute("message-id", message.id);
 
+            if (message.source_id === {{ request.user.id }}) {
+                let messageStatus = document.createElement('span');
+                messageStatus.classList.add("message-status");
+                messageStatus.textContent = " ";
+
+                if (message["hasSent"] === true) {
+                    messageStatus.textContent += "✓";
+                }
+                if (message["hasReached"] === true) {
+                    messageStatus.textContent += "✓";
+                }
+                if (message["hasRead"] === true) {
+                    messageStatus.classList.add("blue");
+                }
+                messageTime.appendChild(messageStatus);
+            }
+            messageElement.appendChild(messageTime);
             return messageElement;
         }
 
@@ -415,10 +441,7 @@
                     },
                     });
                 } else {
-                    chatSockets[activeChatId].send(JSON.stringify({
-                    'message': messageText,
-                    'source_id': {{ request.user.id }},
-                    }));
+                    sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, activeChat.getAttribute("chat-id"));
 
                     messageInput.value = '';
                     messageInput.focus();
@@ -438,6 +461,8 @@
             chatElement.setAttribute("chat-id", chat_id);
             chatElement.setAttribute("new", "true");
             chatElement.style.textWrap = "wrap";
+            chatElement.classList.add("chat");
+
             let usernameElement = document.createElement("span");
             usernameElement.textContent = username;
             let notificationElement = document.createElement("span");
@@ -521,7 +546,7 @@
                                 }
 
                                 let chatElement = getChatElement(data["chat_id"], username.trim());
-                                chatElement.classList.add("chat", "active");
+                                chatElement.classList.add("active");
                                 chatList.appendChild(chatElement);
 
                                 loadChat(data["chat_id"]);

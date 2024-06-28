@@ -42,7 +42,7 @@ class ChatConsumer(WebsocketConsumer):
             self.chat_id,
             {"type": "chat.message", "source_id": message.source_id, "message": message.message, "date": date.__str__(),
              "id": message.id, "hasReached": message.hasReached, "hasRead": message.hasRead, "chat_id":
-                 message.chat_id}
+                 message.chat_id, "hasSent": message.hasSent}
         )
 
     def chat_message(self, event):
@@ -53,10 +53,11 @@ class ChatConsumer(WebsocketConsumer):
         chat_id = event["chat_id"]
         has_reached = event["hasReached"]
         has_read = event["hasRead"]
+        has_sent = event["hasSent"]
 
         self.send(text_data=json.dumps(
             {"source_id": source_id, "message": message, "date": date, "chat_id": chat_id, "id": message_id,
-             "hasReached": has_reached, "hasRead": has_read}))
+             "hasReached": has_reached, "hasRead": has_read, "hasSent": has_sent}))
 
 
 class UserConsumer(WebsocketConsumer):
@@ -69,7 +70,7 @@ class UserConsumer(WebsocketConsumer):
         async_to_sync(self.channel_layer.group_add)(
             self.username, self.channel_name
         )
-
+        
         self.accept()
 
     def disconnect(self, close_code):

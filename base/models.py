@@ -29,6 +29,7 @@ class Message(models.Model):
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
     hasReached = models.BooleanField(default=False)
     hasRead = models.BooleanField(default=False)
+    hasSent = models.BooleanField(default=True)
 
     def __str__(self):
         return self.source.__str__() + ": " + self.message + " to " + self.chat.__str__()
