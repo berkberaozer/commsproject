@@ -68,7 +68,7 @@ class GetMessages(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         chat_id = self.request.GET.get('chat')
         queryset = Message.objects.filter(chat=chat_id).order_by('date').values()
-        queryset.update(hasReached=True)
+
         return JsonResponse({"messages": list(queryset)})
 
 

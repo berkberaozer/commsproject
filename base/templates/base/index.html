@@ -2,22 +2,23 @@
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
 <link rel="stylesheet" href="{% static 'base/style.css' %}">
 
-<h1>Hello {{ request.user }}</h1>
-
-<form action="{% url 'logout' %}" method="post">
-    {% csrf_token %}
-    <button type="submit">Logout</button>
-</form>
-
-<input class="search-user-input" id="search-user-input" type="search" placeholder="Search" aria-label="Search" name="search" >
-<button class="search-user-button" id="search-user-button" type="submit">Search</button>
-
-<div class="users">
-    <ul id="users-list"></ul>
-    <span style="visibility: hidden">No Users!</span>
-</div>
 
 <body>
+    <div>
+        <h1>Hello {{ request.user }}</h1>
+        <form action="{% url 'logout' %}" method="post">
+            {% csrf_token %}
+            <button type="submit">Logout</button>
+        </form>
+
+        <input class="search-user-input" id="search-user-input" type="search" placeholder="Search" aria-label="Search" name="search" >
+        <button class="search-user-button" id="search-user-button" type="submit">Search</button>
+
+        <div class="users">
+            <ul id="users-list"></ul>
+            <span style="visibility: hidden">No Users!</span>
+        </div>
+    </div>
     <div class="container">
         <div class="sidebar">
             <ul class="chat-list" id="chat-list">
@@ -139,13 +140,19 @@
             chatSocket.chat_id = chat_id;
 
             chatSocket.onmessage = function(e) {
-                console.log("hit");
                 let data = JSON.parse(e["data"]);
                 let activeChat = document.querySelector('.chat-list li.active');
                 let chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
 
                 if(data.type === 'chat_message') {
                     if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
+                        let today = document.querySelector(".messageDate[today='true']");
+                        if (today == null) {
+                            let chatMessages = document.getElementById('chat-messages');
+                            let date = new Date('{% now "l, F j, Y g:i A" %}');
+                            let dateElement = getDateElement(date);
+                            chatMessages.appendChild(dateElement);
+                        }
                         let chatMessages = document.getElementById('chat-messages');
                         chatMessages.appendChild(getMessageElement(data));
 
@@ -244,6 +251,7 @@
 
                 if (now.getDay() === weekDayIndex) {
                     dayOfTheWeek = "Today";
+                    dateElement.setAttribute("today", "true");
                 }
                 else if (weekDayIndex === 6 && now.getDay() === 0 || weekDayIndex === now.getDay() - 1) {
                     dayOfTheWeek = "Yesterday";
@@ -322,6 +330,7 @@
 
                     if(messages.length > 0) {
                         let flag = true;
+                        let unread = false;
                         let currentDateIndicator = new Date(messages[0].date);
 
                     for (let i = 0; i < messages.length; i++) {
@@ -338,6 +347,13 @@
                             currentDateIndicator = date;
                         }
                         currentDateIndicator = date;
+                        if(messages[i].source_id !== {{ request.user.id }} && messages[i].hasRead === false && !unread) {
+                            unread = true;
+                            let unreadElement = document.createElement("div");
+                            unreadElement.classList.add("unread-messages");
+                            unreadElement.textContent = "↓ Unread Messages ↓";
+                            chatMessages.appendChild(unreadElement);
+                        }
 
                         messageElement = getMessageElement(messages[i]);
                         chatMessages.appendChild(messageElement);
@@ -446,6 +462,15 @@
 
                         createChatSocket(data["chat_id"]);
                         let recipientSocket = createUserSocket(activeChat.firstChild.textContent);
+
+                        let today = document.querySelector(".messageDate[today='true']");
+                        if (today == null) {
+                            let chatMessages = document.getElementById('chat-messages');
+                            let date = new Date('{% now "l, F j, Y g:i A" %}');
+                            let dateElement = getDateElement(date);
+                            chatMessages.appendChild(dateElement);
+                        }
+
                         sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
                         sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, data["chat_id"], 'chat_message');
 
