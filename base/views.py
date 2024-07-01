@@ -116,21 +116,3 @@ class CreateChat(View):
             return JsonResponse({"chat_id": chat.id})
         else:
             return JsonResponse({"success": False})
-
-
-class ReadMessage(View):
-    def post(self, request, *args, **kwargs):
-        if request.POST.get('id'):
-            message = Message.objects.get(id=request.POST.get('id'))
-            message.hasRead = True
-            message.save()
-            return JsonResponse({"success": True})
-
-
-class ReachedMessage(View):
-    def post(self, request, *args, **kwargs):
-        if request.POST.get('id'):
-            message = Message.objects.get(id=request.POST.get('id'))
-            message.hasReached = True
-            message.save()
-            return JsonResponse({"success": True})
