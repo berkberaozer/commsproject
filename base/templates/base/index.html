@@ -78,6 +78,11 @@
         const chatSockets = {};
         let chatBox;
 
+        const userSocket = createUserSocket("{{ request.user.username }}")
+        {% for chat in user_chats %}
+            createChatSocket({{chat.id}});
+        {% endfor %}
+
         {% for message in chat_messages %}
             {% if message.hasRead == False and message.source.id != request.user.id %}
                 chatBox = document.querySelector(".chat-notification[chat-id='{{ message.chat.id }}']");
@@ -86,11 +91,9 @@
                 }
                 chatBox.textContent = parseInt(chatBox.textContent) + 1 + "";
             {% endif %}
-        {% endfor %}
-
-        const userSocket = createUserSocket("{{ request.user.username }}")
-        {% for chat in user_chats %}
-            createChatSocket({{chat.id}});
+            {% if message.source.id != request.user.id and message.hasReached == False %}
+                sendMessage(chatSockets[{{ message.chat_id }}], "", "", id= {{ message.id }}, type="message_reached");
+            {% endif %}
         {% endfor %}
 
         function createUserSocket(username) {
@@ -138,42 +141,47 @@
             chatSocket.chat_id = chat_id;
 
             chatSocket.onmessage = function(e) {
+                console.log("hit");
                 let data = JSON.parse(e["data"]);
-
                 let activeChat = document.querySelector('.chat-list li.active');
                 let chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
 
-                if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
-                    let chatMessages = document.getElementById('chat-messages');
-                    chatMessages.appendChild(getMessageElement(data));
-                    //loadChat(chat_id);
+                if(data.type === 'chat_message') {
+                    if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
+                        let chatMessages = document.getElementById('chat-messages');
+                        chatMessages.appendChild(getMessageElement(data));
 
-                    chatMessages.scrollTo(0, chatMessages.scrollHeight);
+                        chatMessages.scrollTo(0, chatMessages.scrollHeight);
 
-                    if(chatMessages.scrollHeight > chatMessages.offsetTop) {
-                        chatMessages.dispatchEvent(new CustomEvent("scrollend"));
+                        if(chatMessages.scrollHeight > chatMessages.offsetTop) {
+                            chatMessages.dispatchEvent(new CustomEvent("scrollend"));
+                        }
+
+                    } else {
+                        if (chat_notification.style.display === "none") {
+                            chat_notification.style.display = ""
+                            chat_notification.textContent = "0";
+                        }
+                        chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
                     }
+                } else if (data.type === "message_reached" && activeChat != null) {
+                    let message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
 
-                } else {
-                    if (chat_notification.style.display === "none") {
-                        chat_notification.style.display = ""
-                        chat_notification.textContent = "0";
+                    if(message) {
+                        message.textContent = " ";
+                        message.textContent += "✓✓";
                     }
-                    chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
+                }
+                else if (data.type === "message_read" && activeChat != null) {
+                    let message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+
+                    if(message) {
+                        message.classList.add("blue");
+                    }
                 }
 
-                if(data.source_id !== {{ request.user.id }}) {
-                    $.ajax({
-                        type: "POST",
-                        url: "{% url 'base:reached_message' %}",
-                        data: {
-                            "id": data.id,
-                        },
-                        dataType: "json",
-                        success: function(data) {
-
-                        }
-                    });
+                if(data.source_id !== {{ request.user.id }} && data.type === "chat_message") {
+                    sendMessage(this, "", "", data.message_id, "message_reached");
                 }
             };
 
@@ -184,12 +192,20 @@
             chatSockets[chat_id] = chatSocket;
         }
 
-        function sendMessage(socket, message, source, chat_id) {
+        function sendMessage(socket, message, source, id, type) {
             waitForSocketConnection(socket, function() {
-                socket.send(JSON.stringify({
-                'message': message,
-                'source_id': source,
+                if(type === 'chat_message') {
+                    socket.send(JSON.stringify({
+                    'message': message,
+                    'source_id': source,
+                    'type': type,
                 }));
+                } else {
+                    socket.send(JSON.stringify({
+                        'message_id': id,
+                        'type': type,
+                    }));
+                }
             });
         }
 
@@ -262,7 +278,12 @@
             let date = new Date(message.date);
             messageTime.textContent = date.toLocaleTimeString('en-GB', { hour: "numeric", minute: "numeric"});
             messageElement.appendChild(messageText);
-            messageElement.setAttribute("message-id", message.id);
+            if (message.message_id != null) {
+                messageElement.setAttribute("message-id", message.message_id);
+            } else {
+                messageElement.setAttribute("message-id", message.id);
+            }
+
 
             if (message.source_id === {{ request.user.id }}) {
                 let messageStatus = document.createElement('span');
@@ -290,7 +311,7 @@
             let messageElement;
             let dateElement;
 
-            if (chatId !== "undefined") {
+            if (chatId !== "undefined") { //If chat is not newly created
                 $.ajax({
                 type: "GET",
                 url: "{% url 'base:get_messages' %}",
@@ -394,6 +415,8 @@
         document.getElementById('chat-messages').addEventListener('scrollend', function(event) {
             let messages = document.querySelectorAll(".message.received[hasread='false']");
             let notification = document.querySelector(".chat.active .chat-notification");
+            let activeChat = document.querySelector('.chat-list li.active');
+            let activeChatId = activeChat.getAttribute('chat-id');
 
             messages.forEach(message => {
                 if (message.offsetTop - event.target.offsetTop < event.target.scrollTop + event.target.clientHeight - message.scrollHeight) {
@@ -403,17 +426,7 @@
                         notification.style.display = "none";
                     }
 
-                    $.ajax({
-                    type: "POST",
-                    url: "{% url 'base:read_message' %}",
-                    data: {
-                        "id": message.getAttribute("message-id")
-                    },
-                    dataType: "json",
-                    success: function (data) {
-
-                    },
-                    });
+                    sendMessage(chatSockets[activeChatId], "", "", message.getAttribute('message-id'), "message_read");
                 }
             });
         });
@@ -444,14 +457,14 @@
                         createChatSocket(data["chat_id"]);
                         let recipientSocket = createUserSocket(activeChat.firstChild.textContent);
                         sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
-                        sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, data["chat_id"]);
+                        sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, data["chat_id"], 'chat_message');
 
                         messageInput.value = '';
                         messageInput.focus();
                     },
                     });
                 } else {
-                    sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, activeChat.getAttribute("chat-id"));
+                    sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, activeChat.getAttribute("chat-id"), 'chat_message');
 
                     messageInput.value = '';
                     messageInput.focus();

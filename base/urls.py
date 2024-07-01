@@ -10,6 +10,4 @@ urlpatterns = [
     path("send_message", views.SendMessage.as_view(), name="send_message"),
     path("search_user", views.SearchUser.as_view(), name="search_user"),
     path("create_chat", views.CreateChat.as_view(), name="create_chat"),
-    path("read_message", views.ReadMessage.as_view(), name="read_message"),
-    path("reached_message", views.ReachedMessage.as_view(), name="reached_message"),
 ]
