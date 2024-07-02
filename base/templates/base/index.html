@@ -2,17 +2,17 @@
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
 <link rel="stylesheet" href="{% static 'base/style.css' %}">
 
-
 <body>
-    <div>
-        <h1>Hello {{ request.user }}</h1>
-        <form action="{% url 'logout' %}" method="post">
+    <div class="sidebar">
+        <div id="logout-button"><img src="{% static 'base/logout.png' %}" class="sidebar-icon" alt="Logout"></div>
+        <form action="{% url 'logout' %}" method="post" id="logout-form">
             {% csrf_token %}
-            <button type="submit">Logout</button>
         </form>
-
+    </div>
+    <div class="new-chat-overlay" id="new-chat-overlay" style="display: none">
+        <h2 style="margin: 10px 0">New chat</h2>
         <input class="search-user-input" id="search-user-input" type="search" placeholder="Search" aria-label="Search" name="search" >
-        <button class="search-user-button" id="search-user-button" type="submit">Search</button>
+        <button class="search-user-button" id="search-user-button" type="submit" hidden="hidden">Search</button>
 
         <div class="users">
             <ul id="users-list"></ul>
@@ -20,7 +20,12 @@
         </div>
     </div>
     <div class="container">
-        <div class="sidebar">
+        <div class="chat-list-container">
+            <div class="chat-list-header">
+                <h2 style="float: left; margin-left: 5px">Chats</h2>
+                <div class="new-chat-button" id="new-chat-button"><img src="{% static 'base/new_chat.png' %}" id="new-chat-icon" alt="Create new chat"></div>
+            </div>
+
             <ul class="chat-list" id="chat-list">
                 {% if user_chats.count > 0 %}
                         {% for chat in user_chats %}
@@ -53,6 +58,7 @@
         beforeSend: function(xhr, settings) {
              function getCookie(name) {
                  let cookieValue = null;
+
                  if (document.cookie && document.cookie !== '') {
                      let cookies = document.cookie.split(';');
                      for (let i = 0; i < cookies.length; i++) {
@@ -71,27 +77,31 @@
              }
          }, async: false,
         });
-        let textInput = document.getElementById("message-input");
-        let sendButton = document.getElementById("send-button");
-        let activeRoomId = null;
+
+        const textInput = document.getElementById("message-input");
+        const sendButton = document.getElementById("send-button");
+        const newChatOverlay = document.getElementById("new-chat-overlay");
         const chatSockets = {};
-        let chatBox;
 
         const userSocket = createUserSocket("{{ request.user.username }}")
         {% for chat in user_chats %}
             createChatSocket({{chat.id}});
         {% endfor %}
 
+        let notification;
         {% for message in chat_messages %}
-            {% if message.hasRead == False and message.source.id != request.user.id %}
-                chatBox = document.querySelector(".chat-notification[chat-id='{{ message.chat.id }}']");
-                if (chatBox.style.display === "none") {
-                    chatBox.style.display = "";
-                }
-                chatBox.textContent = parseInt(chatBox.textContent) + 1 + "";
-            {% endif %}
-            {% if message.source.id != request.user.id and message.hasReached == False %}
-                sendMessage(chatSockets[{{ message.chat_id }}], "", "", id= {{ message.id }}, type="message_reached");
+            {% if message.source.id != request.user.id %}
+                {% if message.hasRead == False %}
+                    notification = document.querySelector(".chat-notification[chat-id='{{ message.chat.id }}']");
+                    if (notification.style.display === "none") {
+                        notification.style.display = "";
+                    }
+                    notification.textContent = parseInt(notification.textContent) + 1 + "";
+                {% endif %}
+
+                {% if message.hasReached == False %}
+                    sendMessage(chatSockets[{{ message.chat_id }}], "", "", id= {{ message.id }}, type="message_reached");
+                {% endif %}
             {% endif %}
         {% endfor %}
 
@@ -102,14 +112,15 @@
 
             userSocket.onmessage = function(e) {
                 if ("{{ request.user.username }}" !== JSON.parse(e["data"])["source_username"]) {
-                    let chat_id = JSON.parse(e['data'])['chat_id'];
-                    let username = JSON.parse(e["data"])["source_username"];
+                    const chat_id = JSON.parse(e['data'])['chat_id'];
+                    const username = JSON.parse(e["data"])["source_username"];
+                    const newChat = document.querySelector(".chat[chat-id='${chat_id}']");
 
-                    let newChat = document.querySelector(".chat[chat-id='${chat_id}']");
                     if (newChat == null) {
-                        let chatList = document.getElementById("chat-list");
-                        let chatElement = getChatElement(chat_id, username)
-                        let notificationElement = chatElement.firstChild.nextSibling;
+                        const chatList = document.getElementById("chat-list");
+                        const chatElement = getChatElement(chat_id, username)
+
+                        const notificationElement = chatElement.firstChild.nextSibling;
                         notificationElement.style.display = "";
                         notificationElement.textContent = "1";
 
@@ -117,9 +128,9 @@
 
                         createChatSocket(chat_id);
 
-                        let text = document.querySelector("#no-chats-banner");
-                        if (text) {
-                            text.remove();
+                        const noChatsBanner = document.querySelector("#no-chats-banner");
+                        if (noChatsBanner) {
+                            noChatsBanner.remove();
                         }
                     }
                 }
@@ -130,39 +141,48 @@
             };
 
             return userSocket;
-            }
+        }
 
         function createChatSocket(chat_id) {
             const chatSocket = new WebSocket(
                 `ws://${window.location.host}/base/chat/${chat_id}/`
             );
-
             chatSocket.chat_id = chat_id;
 
             chatSocket.onmessage = function(e) {
-                let data = JSON.parse(e["data"]);
-                let activeChat = document.querySelector('.chat-list li.active');
-                let chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
+                const data = JSON.parse(e["data"]);
+                const activeChat = document.querySelector('.chat-list li.active');
+                const chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
+                const chatMessages = document.getElementById('chat-messages');
 
                 if(data.type === 'chat_message') {
+                    //if the incoming message's chat is open, show the message
                     if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
-                        let today = document.querySelector(".messageDate[today='true']");
-                        if (today == null) {
-                            let chatMessages = document.getElementById('chat-messages');
-                            let date = new Date('{% now "l, F j, Y g:i A" %}');
-                            let dateElement = getDateElement(date);
+                        //if this message is the first message of the day, create a "Today" indicator.
+                        const todayIndicator = document.querySelector(".messageDate[today='true']");
+                        if (todayIndicator == null) {
+                            const date = new Date('{% now "l, F j, Y g:i A" %}');
+                            const dateElement = getDateElement(date);
+
                             chatMessages.appendChild(dateElement);
                         }
-                        let chatMessages = document.getElementById('chat-messages');
+
+                        //when user responds someone, remove the "Unread Messages" indicator.
+                        const unreadMessagesIndicator = document.getElementById("unread-messages");
+                        if(unreadMessagesIndicator != null) {
+                            unreadMessagesIndicator.remove();
+                        }
+
                         chatMessages.appendChild(getMessageElement(data));
 
+                        //scroll to bottom.
                         chatMessages.scrollTo(0, chatMessages.scrollHeight);
 
+                        //if there is no scrollbar, trigger the event manually for reading the messages
                         if(chatMessages.scrollHeight > chatMessages.offsetTop) {
                             chatMessages.dispatchEvent(new CustomEvent("scrollend"));
                         }
-
-                    } else {
+                    } else { //if incoming message's chat is not open, just increase the notification
                         if (chat_notification.style.display === "none") {
                             chat_notification.style.display = ""
                             chat_notification.textContent = "0";
@@ -170,7 +190,7 @@
                         chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
                     }
                 } else if (data.type === "message_reached" && activeChat != null) {
-                    let message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                    const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
 
                     if(message) {
                         message.textContent = " ";
@@ -178,13 +198,14 @@
                     }
                 }
                 else if (data.type === "message_read" && activeChat != null) {
-                    let message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                    const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
 
                     if(message) {
                         message.classList.add("blue");
                     }
                 }
 
+                //if this user is the receiving end, notify the sender that message is reached
                 if(data.source_id !== {{ request.user.id }} && data.type === "chat_message") {
                     sendMessage(this, "", "", data.message_id, "message_reached");
                 }
@@ -237,16 +258,16 @@
         }
 
         function getDateElement(date) {
-            let now = new Date();
-            let weekBefore = new Date();
-            let dateElement = document.createElement("div");
+            const now = new Date();
+            const weekBefore = new Date();
+            weekBefore.setDate(weekBefore.getDate() - 6)
+            weekBefore.setHours(0,0,0);
+            const dateElement = document.createElement("div");
             dateElement.classList.add("messageDate");
 
-            weekBefore.setDate(weekBefore.getDate() - 7)
-            weekBefore.setHours(0,0,0);
             if(date.valueOf() > weekBefore.valueOf()) {
-                let weekDayIndex = date.getDay();
-                let daysOfTheWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                const daysOfTheWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                const weekDayIndex = date.getDay();
                 let dayOfTheWeek = daysOfTheWeek[weekDayIndex];
 
                 if (now.getDay() === weekDayIndex) {
@@ -266,10 +287,9 @@
         }
 
         function getMessageElement(message) {
-            let messageElement = document.createElement('div');
-            let messageText = document.createElement('p');
-            let messageTime = document.createElement('span');
-            let container = document.createElement('div');
+            const messageElement = document.createElement('div');
+            const messageText = document.createElement('p');
+            const messageTime = document.createElement('span');
 
             messageElement.classList.add('message', message.source_id === {{ request.user.id }} ? 'sent' : 'received');
             messageElement.setAttribute('hasRead', message["hasRead"]);
@@ -277,13 +297,14 @@
             messageElement.setAttribute('hasSent', message["hasSent"]);
 
             messageText.classList.add('messageText');
-            messageTime.classList.add('messageTime');
-
             messageText.textContent = message.message;
 
-            let date = new Date(message.date);
+            messageTime.classList.add('messageTime');
+            const date = new Date(message.date);
             messageTime.textContent = date.toLocaleTimeString('en-GB', { hour: "numeric", minute: "numeric"});
+
             messageElement.appendChild(messageText);
+
             if (message.message_id != null) {
                 messageElement.setAttribute("message-id", message.message_id);
             } else {
@@ -292,7 +313,7 @@
 
 
             if (message.source_id === {{ request.user.id }}) {
-                let messageStatus = document.createElement('span');
+                const messageStatus = document.createElement('span');
                 messageStatus.classList.add("message-status");
                 messageStatus.textContent = " ";
 
@@ -307,12 +328,13 @@
                 }
                 messageTime.appendChild(messageStatus);
             }
+
             messageElement.appendChild(messageTime);
             return messageElement;
         }
 
         function loadChat(chatId) {
-            let chatMessages = document.getElementById('chat-messages');
+            const chatMessages = document.getElementById('chat-messages');
             chatMessages.innerHTML = '';
             let messageElement;
             let dateElement;
@@ -326,39 +348,41 @@
                 },
                 dataType: "json",
                 success: function (data) {
-                    let messages=data["messages"];
+                    const messages=data["messages"];
 
                     if(messages.length > 0) {
                         let flag = true;
                         let unread = false;
                         let currentDateIndicator = new Date(messages[0].date);
 
-                    for (let i = 0; i < messages.length; i++) {
-                        let date = new Date(messages[i].date);
+                        for (let i = 0; i < messages.length; i++) {
+                            const date = new Date(messages[i].date);
 
-                        if (currentDateIndicator.getDay() !== date.getDay() || currentDateIndicator.getMonth() !== date.getMonth() || currentDateIndicator.getFullYear() !== date.getFullYear()) {
-                            flag = true;
-                        }
-                        if (flag) {
-                            dateElement = getDateElement(date);
-                            chatMessages.appendChild(dateElement);
+                            if (currentDateIndicator.getDay() !== date.getDay() || currentDateIndicator.getMonth() !== date.getMonth() || currentDateIndicator.getFullYear() !== date.getFullYear()) {
+                                flag = true;
+                            }
+                            if (flag) {
+                                dateElement = getDateElement(date);
+                                chatMessages.appendChild(dateElement);
 
-                            flag = false;
+                                flag = false;
+                                currentDateIndicator = date;
+                            }
                             currentDateIndicator = date;
-                        }
-                        currentDateIndicator = date;
-                        if(messages[i].source_id !== {{ request.user.id }} && messages[i].hasRead === false && !unread) {
-                            unread = true;
-                            let unreadElement = document.createElement("div");
-                            unreadElement.classList.add("unread-messages");
-                            unreadElement.textContent = "↓ Unread Messages ↓";
-                            chatMessages.appendChild(unreadElement);
-                        }
+                            if(messages[i].source_id !== {{ request.user.id }} && messages[i].hasRead === false && !unread) {
+                                unread = true;
 
-                        messageElement = getMessageElement(messages[i]);
-                        chatMessages.appendChild(messageElement);
-                    }
-                }},
+                                const unreadElement = document.createElement("div");
+                                unreadElement.id = "unread-messages";
+                                unreadElement.textContent = "↓ Unread Messages ↓";
+
+                                chatMessages.appendChild(unreadElement);
+                            }
+
+                            messageElement = getMessageElement(messages[i]);
+                            chatMessages.appendChild(messageElement);
+                        }
+                    }},
                 failure: function () {
                     alert("failure");
                 }
@@ -367,10 +391,13 @@
 
             chatMessages.dispatchEvent(new CustomEvent("scrollend"));
 
-            let chatHeader = document.getElementById('chat-header');
+            const chatHeader = document.getElementById('chat-header');
             chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
-            let firstUnread = document.querySelector('.message.received[hasread="false"]');
+            chatHeader.style.display = "block";
+
+            const firstUnread = document.querySelector('.message.received[hasread="false"]');
             chatMessages.scrollTo({top: chatMessages.scrollHeight, behavior: "smooth"})
+
             if(firstUnread != null) {
                 chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight, behavior: "instant"});
             } else {
@@ -379,11 +406,12 @@
         }
 
         function clearChat() {
-            let chatMessages = document.getElementById('chat-messages');
+            const chatMessages = document.getElementById('chat-messages');
             chatMessages.innerHTML = '';
 
-            let chatHeader = document.getElementById('chat-header');
+            const chatHeader = document.getElementById('chat-header');
             chatHeader.innerHTML = '';
+            chatHeader.style.display = "none";
         }
 
         document.getElementById('chat-list').addEventListener('click', function(event) {
@@ -395,7 +423,7 @@
                 } else {
                     target = event.target;
                 }
-                let activeChat = document.querySelector('.chat-list li.active');
+                const activeChat = document.querySelector('.chat-list li.active');
 
                 if (target.classList.contains("active")) {
                     activeChat.classList.remove('active');
@@ -419,10 +447,10 @@
         })
 
         document.getElementById('chat-messages').addEventListener('scrollend', function(event) {
-            let messages = document.querySelectorAll(".message.received[hasread='false']");
-            let notification = document.querySelector(".chat.active .chat-notification");
-            let activeChat = document.querySelector('.chat-list li.active');
-            let activeChatId = activeChat.getAttribute('chat-id');
+            const messages = document.querySelectorAll(".message.received[hasread='false']");
+            const notification = document.querySelector(".chat.active .chat-notification");
+            const activeChat = document.querySelector('.chat-list li.active');
+            const activeChatId = activeChat.getAttribute('chat-id');
 
             messages.forEach(message => {
                 if (message.offsetTop - event.target.offsetTop < event.target.scrollTop + event.target.clientHeight - message.scrollHeight) {
@@ -438,11 +466,11 @@
         });
 
         document.getElementById('send-button').addEventListener('click', function() {
-            let messageInput = document.getElementById('message-input');
-            let messageText = messageInput.value.trim();
-            let activeChat = document.querySelector('.chat-list li.active');
+            const messageInput = document.getElementById('message-input');
+            const messageText = messageInput.value.trim();
+            const activeChat = document.querySelector('.chat-list li.active');
             let activeChatId = activeChat.getAttribute('chat-id');
-            let notificationElement = document.querySelector('.chat-list li.active .chat-notification')
+            const notificationElement = document.querySelector('.chat-list li.active .chat-notification')
 
             if (messageText !== '') {
                 if(activeChat.hasAttribute("new")) { //Creating the chat in the database when the creator sending a message
@@ -461,15 +489,7 @@
                         activeChatId = activeChat.getAttribute('chat-id');
 
                         createChatSocket(data["chat_id"]);
-                        let recipientSocket = createUserSocket(activeChat.firstChild.textContent);
-
-                        let today = document.querySelector(".messageDate[today='true']");
-                        if (today == null) {
-                            let chatMessages = document.getElementById('chat-messages');
-                            let date = new Date('{% now "l, F j, Y g:i A" %}');
-                            let dateElement = getDateElement(date);
-                            chatMessages.appendChild(dateElement);
-                        }
+                        const recipientSocket = createUserSocket(activeChat.firstChild.textContent);
 
                         sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
                         sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, data["chat_id"], 'chat_message');
@@ -495,15 +515,16 @@
         });
 
         function getChatElement(chat_id, username) {
-            let chatElement = document.createElement('li');
+            const chatElement = document.createElement('li');
             chatElement.setAttribute("chat-id", chat_id);
             chatElement.setAttribute("new", "true");
             chatElement.style.textWrap = "wrap";
             chatElement.classList.add("chat");
 
-            let usernameElement = document.createElement("span");
+            const usernameElement = document.createElement("span");
             usernameElement.textContent = username;
-            let notificationElement = document.createElement("span");
+
+            const notificationElement = document.createElement("span");
             notificationElement.setAttribute("chat-id", chat_id);
             notificationElement.style.display = "none";
             notificationElement.textContent = "0";
@@ -532,11 +553,10 @@
                     },
                     dataType: "json",
                     success: function (data) {
-                        let users = data["users"];
-                        let userElement;
-                        let userName;
-                        let userList = document.getElementById('users-list');
-                        let noUsersText = document.querySelector(".users > span");
+                        const users = data["users"];
+                        const userList = document.getElementById('users-list');
+                        const noUsersText = document.querySelector(".users > span");
+
                         userList.innerHTML = '';
 
                         if(users.length === 0){
@@ -545,22 +565,21 @@
                             noUsersText.style.visibility = "hidden";
 
                             for(let i=0; i<users.length; i++) {
-                            userElement = document.createElement('li');
-                            userElement.classList.add('user');
+                                const userElement = document.createElement('li');
+                                userElement.classList.add('user');
+                                userList.appendChild(userElement);
 
-                            userList.appendChild(userElement);
-
-                            userName = document.createElement('a');
-                            userName.textContent = users[i].username;
-                            userName.classList.add("username")
-                            userName.href = "#";
-                            userElement.appendChild(userName);
+                                const userName = document.createElement('a');
+                                userName.textContent = users[i].username;
+                                userName.classList.add("username")
+                                userName.href = "#";
+                                userElement.appendChild(userName);
                             }
                         }
 
                         //open the chat of the user or create new
                         document.querySelectorAll('.username').forEach(el => el.addEventListener('click', () => {
-                            let username = el.textContent;
+                            const username = el.textContent;
                             const chats = document.querySelectorAll('.chat');
                             let alreadyChatting = false;
 
@@ -573,17 +592,28 @@
                                     alreadyChatting = true;
                                     chat.click();
                                     userList.innerHTML = '';
+                                    newChatOverlay.style.display = "none";
+
+                                    const button = document.getElementById("new-chat-button");
+                                    button.classList.remove("active");
+                                    userList.innerHTML = '';
+                                    input.value = '';
                                 }
                             })
                             if (!alreadyChatting) { //create new chat
-                                let chatList = document.getElementById("chat-list");
+                                const chatList = document.getElementById("chat-list");
+                                const button = document.getElementById("new-chat-button");
 
-                                let activeChat = document.querySelector('.chat-list li.active');
+                                button.classList.remove("active");
+                                newChatOverlay.style.display = "none";
+                                input.value = '';
+
+                                const activeChat = document.querySelector('.chat-list li.active');
                                 if (activeChat) {
                                     activeChat.classList.remove('active');
                                 }
 
-                                let chatElement = getChatElement(data["chat_id"], username.trim());
+                                const chatElement = getChatElement(data["chat_id"], username.trim());
                                 chatElement.classList.add("active");
                                 chatList.appendChild(chatElement);
 
@@ -608,5 +638,22 @@
                 document.getElementById('search-user-button').click();
             }
         });
+
+        document.getElementById('new-chat-button').addEventListener('click', function(event) {
+            if (newChatOverlay.style.display === "none") {
+                newChatOverlay.style.display = "block";
+                this.classList.add("active");
+                let input = document.getElementById("search-user-input");
+                input.focus();
+            } else {
+                newChatOverlay.style.display = "none";
+                this.classList.remove('active');
+            }
+        })
+
+        document.getElementById('logout-button').addEventListener('click', function(event) {
+            let form = document.getElementById('logout-form');
+            form.submit();
+        })
     </script>
 </body>
