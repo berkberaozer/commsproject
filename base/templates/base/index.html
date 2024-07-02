@@ -41,9 +41,9 @@
                 {% endif %}
             </ul>
         </div>
-        <div class="chat-container">
+        <div class="chat-container" style="background-image: url({% static 'base/background.png' %})">
             <div class="chat-header" id="chat-header"></div>
-            <div class="chat-messages" id="chat-messages" style="background-image: url({% static 'base/background.png' %})"></div>
+            <div class="chat-messages" id="chat-messages"></div>
             <div class="chat-input">
                 {% csrf_token %}
                 <label for="message-input"></label>
