@@ -392,3 +392,8 @@ emoji-picker {
     --background: #2c2c2c;
     --border-color: black;
 }
+
+.message-status {
+    letter-spacing: -3px;
+    margin: 0 3px;
+}

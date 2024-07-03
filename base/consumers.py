@@ -82,6 +82,7 @@ class ChatConsumer(WebsocketConsumer):
 
 class UserConsumer(WebsocketConsumer):
     online = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
         self.username = None

@@ -20,9 +20,9 @@ class LoginPage(LoginView):
     def post(self, request, *args, **kwargs):
         user = authenticate(request, username=request.POST.get('username'), password=request.POST.get('password'))
 
-        if user:
+        if user:  # if user is authenticated
             login(request, user)
-            messages.success(request, 'You are now logged in!')
+
             return HttpResponseRedirect(reverse("base:index"))
 
     def get(self, request, *args, **kwargs):
@@ -39,13 +39,12 @@ class RegisterView(View):
     def post(self, request, *args, **kwargs):
         form = RegistrationForm(request.POST)
         if form.is_valid():
-            print(form.cleaned_data)
-            user = User.objects.create_user(username=form.cleaned_data['username'], email=form.cleaned_data['email'],
-                                            password=form.cleaned_data['password'],
-                                            first_name=form.cleaned_data['first_name'],
-                                            last_name=form.cleaned_data['last_name'])
-            User.save(user)
-            print(User.objects.values())
+            form = form.cleaned_data
+            user = User.objects.create_user(username=form['username'], email=form['email'],
+                                            password=form['password'],
+                                            first_name=form['first_name'],
+                                            last_name=form['last_name'])
+            user.save()
 
             return HttpResponseRedirect(reverse('base:index'))
         else:
@@ -64,7 +63,6 @@ class IndexView(LoginRequiredMixin, View):
 
 
 class GetMessages(LoginRequiredMixin, View):
-
     def get(self, request, *args, **kwargs):
         chat_id = self.request.GET.get('chat')
         queryset = Message.objects.filter(chat=chat_id).order_by('date').values()
