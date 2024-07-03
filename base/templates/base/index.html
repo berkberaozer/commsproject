@@ -41,9 +41,14 @@
                 {% endif %}
             </ul>
         </div>
-        <div class="chat-container" style="background-image: url({% static 'base/background.png' %})">
+        <div class="chat-container" style="background-image: url({% static 'base/background-default.png' %})">
             <div class="chat-header" id="chat-header"></div>
             <div class="chat-messages" id="chat-messages"></div>
+
+            <div class="go-bottom-button" id="go-bottom-button">
+                <span id="go-bottom-notification">0</span>
+                <img src="{% static 'base/go-bottom.png' %}" alt="Go down" id="go-bottom-icon" class="sidebar-icon">
+            </div>
             <div class="chat-input">
                 {% csrf_token %}
                 <label for="message-input"></label>
@@ -81,6 +86,9 @@
         const textInput = document.getElementById("message-input");
         const sendButton = document.getElementById("send-button");
         const newChatOverlay = document.getElementById("new-chat-overlay");
+        const chatMessages = document.getElementById('chat-messages');
+        const goBottomButton = document.getElementById("go-bottom-button");
+        const goBottomNotification = document.getElementById("go-bottom-notification");
         const chatSockets = {};
 
         const userSocket = createUserSocket("{{ request.user.username }}")
@@ -100,7 +108,7 @@
                 {% endif %}
 
                 {% if message.hasReached == False %}
-                    sendMessage(chatSockets[{{ message.chat_id }}], "", "", id= {{ message.id }}, type="message_reached");
+                    sendMessage(chatSockets[{{ message.chat_id }}], type="message_reached", id= {{ message.id }});
                 {% endif %}
             {% endif %}
         {% endfor %}
@@ -153,9 +161,10 @@
                 const data = JSON.parse(e["data"]);
                 const activeChat = document.querySelector('.chat-list li.active');
                 const chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
-                const chatMessages = document.getElementById('chat-messages');
 
                 if(data.type === 'chat_message') {
+                    const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
+
                     //if the incoming message's chat is open, show the message
                     if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
                         //if this message is the first message of the day, create a "Today" indicator.
@@ -175,12 +184,20 @@
 
                         chatMessages.appendChild(getMessageElement(data));
 
-                        //scroll to bottom.
-                        chatMessages.scrollTo(0, chatMessages.scrollHeight);
+                        console.log(chatMessages.scrollHeight);
+
+                        if (viewingOlderMessages && data.source_id !== {{ request.user.id }}) {
+                            goBottomNotification.textContent = parseInt(goBottomNotification.textContent) + 1 + "";
+                            if(goBottomNotification.style.display === "none") {
+                                goBottomNotification.style.display = "block";
+                            }
+                        } else {
+                            chatMessages.scrollTo(0, chatMessages.scrollHeight);
+                        }
 
                         //if there is no scrollbar, trigger the event manually for reading the messages
-                        if(chatMessages.scrollHeight > chatMessages.offsetTop) {
-                            chatMessages.dispatchEvent(new CustomEvent("scrollend"));
+                        if(chatMessages.scrollHeight === chatMessages.clientHeight) {
+                            chatMessages.dispatchEvent(new CustomEvent("scroll"));
                         }
                     } else { //if incoming message's chat is not open, just increase the notification
                         if (chat_notification.style.display === "none") {
@@ -207,7 +224,7 @@
 
                 //if this user is the receiving end, notify the sender that message is reached
                 if(data.source_id !== {{ request.user.id }} && data.type === "chat_message") {
-                    sendMessage(this, "", "", data.message_id, "message_reached");
+                    sendMessage(this, "message_reached", data.message_id);
                 }
             };
 
@@ -218,12 +235,12 @@
             chatSockets[chat_id] = chatSocket;
         }
 
-        function sendMessage(socket, message, source, id, type) {
+        function sendMessage(socket, type, id, message) {
             waitForSocketConnection(socket, function() {
                 if(type === 'chat_message') {
                     socket.send(JSON.stringify({
                     'message': message,
-                    'source_id': source,
+                    'source_id': id,
                     'type': type,
                 }));
                 } else {
@@ -389,7 +406,7 @@
             });
             }
 
-            chatMessages.dispatchEvent(new CustomEvent("scrollend"));
+            chatMessages.dispatchEvent(new CustomEvent("scroll"));
 
             const chatHeader = document.getElementById('chat-header');
             chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
@@ -420,37 +437,41 @@
             if(event.target.id !== "no-chats-banner" && $(event.target).parent().id !== "no-chats-banner") {
                 if(event.target.tagName.toLowerCase() !== "li") {
                     target = event.target.parentNode;
-                } else {
+                } else if (event.target.tagName.toLowerCase() === "span"){
                     target = event.target;
                 }
-                const activeChat = document.querySelector('.chat-list li.active');
 
-                if (target.classList.contains("active")) {
-                    activeChat.classList.remove('active');
+                if(event.target.tagName.toLowerCase() === "li") {
+                    const activeChat = document.querySelector('.chat-list li.active');
 
-                    textInput.setAttribute("disabled", "true");
-                    sendButton.setAttribute("disabled", "true");
-                    clearChat();
-                }
-                else {
-                    textInput.removeAttribute("disabled");
-                    sendButton.removeAttribute("disabled");
+                    if (target.classList.contains("active")) {
+                        activeChat.classList.remove('active');
 
-                    if(activeChat) {
-                        activeChat.classList.remove("active");
+                        textInput.setAttribute("disabled", "true");
+                        sendButton.setAttribute("disabled", "true");
+                        clearChat();
                     }
-                    target.classList.add("active");
+                    else {
+                        textInput.removeAttribute("disabled");
+                        sendButton.removeAttribute("disabled");
 
-                    loadChat(target.getAttribute('chat-id'));
+                        if(activeChat) {
+                            activeChat.classList.remove("active");
+                        }
+                        target.classList.add("active");
+
+                        loadChat(target.getAttribute('chat-id'));
+                    }
                 }
             }
         })
 
-        document.getElementById('chat-messages').addEventListener('scrollend', function(event) {
+        document.getElementById('chat-messages').addEventListener('scroll', function(event) {
             const messages = document.querySelectorAll(".message.received[hasread='false']");
             const notification = document.querySelector(".chat.active .chat-notification");
             const activeChat = document.querySelector('.chat-list li.active');
             const activeChatId = activeChat.getAttribute('chat-id');
+            let chatMessages = document.getElementById("chat-messages");
 
             messages.forEach(message => {
                 if (message.offsetTop - event.target.offsetTop < event.target.scrollTop + event.target.clientHeight - message.scrollHeight) {
@@ -459,10 +480,22 @@
                     if(parseInt(notification.textContent) === 0) {
                         notification.style.display = "none";
                     }
-
-                    sendMessage(chatSockets[activeChatId], "", "", message.getAttribute('message-id'), "message_read");
+                    sendMessage(chatSockets[activeChatId], "message_read", message.getAttribute('message-id'));
                 }
             });
+
+            if (chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight) {
+                if (goBottomButton.style.display === "none") {
+                    goBottomButton.style.display = "block";
+                    if (parseInt(goBottomNotification.textContent) > 0) {
+                        goBottomNotification.style.display = "block";
+                    }
+                }
+            } else if (goBottomButton.style.display !== "none") {
+                goBottomButton.style.display = "none";
+                goBottomNotification.style.display = "none";
+                goBottomNotification.textContent = 0;
+            }
         });
 
         document.getElementById('send-button').addEventListener('click', function() {
@@ -492,14 +525,14 @@
                         const recipientSocket = createUserSocket(activeChat.firstChild.textContent);
 
                         sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
-                        sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, data["chat_id"], 'chat_message');
+                        sendMessage(chatSockets[activeChatId], 'chat_message', {{ request.user.id }}, messageText);
 
                         messageInput.value = '';
                         messageInput.focus();
                     },
                     });
                 } else {
-                    sendMessage(chatSockets[activeChatId], messageText, {{ request.user.id }}, activeChat.getAttribute("chat-id"), 'chat_message');
+                    sendMessage(chatSockets[activeChatId], 'chat_message', {{ request.user.id }}, messageText);
 
                     messageInput.value = '';
                     messageInput.focus();
@@ -654,6 +687,12 @@
         document.getElementById('logout-button').addEventListener('click', function(event) {
             let form = document.getElementById('logout-form');
             form.submit();
+        })
+
+        goBottomButton.addEventListener('click', function(event) {
+            chatMessages.scrollTo(0, chatMessages.scrollHeight);
+
+            goBottomButton.style.display = "none";
         })
     </script>
 </body>
