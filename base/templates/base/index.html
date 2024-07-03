@@ -51,14 +51,20 @@
             </div>
             <div class="chat-input">
                 {% csrf_token %}
+                <emoji-picker style="display: none" id="emoji-picker"></emoji-picker>
+                <div class="emoji-picker-button" style="display: block" id="emoji-picker-button" disabled="true">
+                    <img src="{% static 'base/emoji-icon.png' %}" alt="Go down" id="emoji-icon" class="sidebar-icon">
+                </div>
+
                 <label for="message-input"></label>
                 <input type="text" id="message-input" placeholder="Type your message here..." disabled>
                 <button id="send-button" disabled>Send</button>
             </div>
         </div>
     </div>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
-        //makes the ajax django auth compatible
+        //makes the ajax django auth compatible by appending the django csrf token to ajax header
         $.ajaxSetup({
         beforeSend: function(xhr, settings) {
              function getCookie(name) {
@@ -83,12 +89,14 @@
          }, async: false,
         });
 
-        const textInput = document.getElementById("message-input");
+        const messageInput = document.getElementById("message-input");
         const sendButton = document.getElementById("send-button");
         const newChatOverlay = document.getElementById("new-chat-overlay");
         const chatMessages = document.getElementById('chat-messages');
         const goBottomButton = document.getElementById("go-bottom-button");
         const goBottomNotification = document.getElementById("go-bottom-notification");
+        const emojiPickerButton = document.getElementById("emoji-picker-button");
+        const emojiPicker = document.querySelector("emoji-picker");
         const chatSockets = {};
 
         const userSocket = createUserSocket("{{ request.user.username }}")
@@ -184,8 +192,6 @@
 
                         chatMessages.appendChild(getMessageElement(data));
 
-                        console.log(chatMessages.scrollHeight);
-
                         if (viewingOlderMessages && data.source_id !== {{ request.user.id }}) {
                             goBottomNotification.textContent = parseInt(goBottomNotification.textContent) + 1 + "";
                             if(goBottomNotification.style.display === "none") {
@@ -257,6 +263,7 @@
                 socket.send(JSON.stringify({
                 'chat_id': chat_id,
                 'source_username': source,
+                'type': "chat_creation"
                 }));
             });
         }
@@ -444,16 +451,22 @@
                 if(event.target.tagName.toLowerCase() === "li") {
                     const activeChat = document.querySelector('.chat-list li.active');
 
+                    if(emojiPicker.style.display !== "none") {
+                        emojiPicker.style.display = "none";
+                    }
+
                     if (target.classList.contains("active")) {
                         activeChat.classList.remove('active');
 
-                        textInput.setAttribute("disabled", "true");
+                        messageInput.setAttribute("disabled", "true");
                         sendButton.setAttribute("disabled", "true");
+                        emojiPickerButton.setAttribute("disabled", "true");
                         clearChat();
                     }
                     else {
-                        textInput.removeAttribute("disabled");
+                        messageInput.removeAttribute("disabled");
                         sendButton.removeAttribute("disabled");
+                        emojiPickerButton.removeAttribute("disabled");
 
                         if(activeChat) {
                             activeChat.classList.remove("active");
@@ -470,7 +483,9 @@
             const messages = document.querySelectorAll(".message.received[hasread='false']");
             const notification = document.querySelector(".chat.active .chat-notification");
             const activeChat = document.querySelector('.chat-list li.active');
-            const activeChatId = activeChat.getAttribute('chat-id');
+            if (activeChat != null) {
+                const activeChatId = activeChat.getAttribute('chat-id');
+            }
             let chatMessages = document.getElementById("chat-messages");
 
             messages.forEach(message => {
@@ -499,7 +514,6 @@
         });
 
         document.getElementById('send-button').addEventListener('click', function() {
-            const messageInput = document.getElementById('message-input');
             const messageText = messageInput.value.trim();
             const activeChat = document.querySelector('.chat-list li.active');
             let activeChatId = activeChat.getAttribute('chat-id');
@@ -547,6 +561,12 @@
             }
         });
 
+        document.getElementById('message-input').addEventListener('click', function(event) {
+            if(emojiPicker.style.display !== "none") {
+                emojiPicker.style.display = "none";
+            }
+        })
+
         function getChatElement(chat_id, username) {
             const chatElement = document.createElement('li');
             chatElement.setAttribute("chat-id", chat_id);
@@ -569,9 +589,10 @@
             return chatElement;
         }
 
-        function disableMessageInput() {
-            textInput.removeAttribute("disabled");
+        function enableMessageInput() {
+            messageInput.removeAttribute("disabled");
             sendButton.removeAttribute("disabled");
+            emojiPickerButton.removeAttribute("disabled");
         }
 
         document.getElementById('search-user-button').addEventListener('click', function() {
@@ -652,7 +673,7 @@
 
                                 loadChat(data["chat_id"]);
 
-                                disableMessageInput();
+                                enableMessageInput();
                                 userList.innerHTML = '';
                             }
                         }));
@@ -694,5 +715,17 @@
 
             goBottomButton.style.display = "none";
         })
+
+        emojiPickerButton.addEventListener('click', function(event) {
+            if (!emojiPickerButton.hasAttribute("disabled")) {
+                if (emojiPicker.style.display === "none") {
+                    emojiPicker.style.display = "block";
+                } else {
+                    emojiPicker.style.display = "none";
+                }
+            }
+        })
+
+        emojiPicker.addEventListener('emoji-click', event => messageInput.value = messageInput.value + event["detail"]["unicode"]);
     </script>
 </body>

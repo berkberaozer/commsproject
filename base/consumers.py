@@ -81,12 +81,14 @@ class ChatConsumer(WebsocketConsumer):
 
 
 class UserConsumer(WebsocketConsumer):
+    online = False
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
         self.username = None
 
     def connect(self):
         self.username = self.scope["url_route"]["kwargs"]["username"]
+        self.online = True
         async_to_sync(self.channel_layer.group_add)(
             self.username, self.channel_name
         )
@@ -94,6 +96,7 @@ class UserConsumer(WebsocketConsumer):
         self.accept()
 
     def disconnect(self, close_code):
+        self.online = False
         async_to_sync(self.channel_layer.group_discard)(
             self.username, self.channel_name
         )
@@ -103,12 +106,21 @@ class UserConsumer(WebsocketConsumer):
         source_username = data["source_username"]
         chat_id = data["chat_id"]
 
-        async_to_sync(self.channel_layer.group_send)(
-            self.username, {"type": "chat.creation", "source_username": source_username, "chat_id": chat_id}
-        )
+        if data["type"] == "chat_creation":
+            async_to_sync(self.channel_layer.group_send)(
+                self.username, {"type": "chat_creation", "source_username": source_username, "chat_id": chat_id}
+            )
+        elif data["type"] == "is_online":
+            async_to_sync(self.channel_layer.group_send)(
+                self.username, {"type": "is_online", "value": self.online}
+            )
 
     def chat_creation(self, event):
         source_username = event["source_username"]
         chat_id = event["chat_id"]
+        message_type = event["type"]
 
-        self.send(text_data=json.dumps({"source_username": source_username, "chat_id": chat_id}))
+        self.send(text_data=json.dumps({"type": message_type, "source_username": source_username, "chat_id": chat_id}))
+
+    def is_online(self, event):
+        self.send(text_data=json.dumps({"type": event["type"], "value": event["value"]}))

@@ -364,3 +364,31 @@ body {
     width: 12px;
     display: none;
 }
+
+#emoji-picker-button {
+    padding: 0.3vw;
+    margin-right: 5px;
+    border-radius: 8px;
+    position: relative;
+    right: 2px;
+    align-content: center;
+}
+
+#emoji-picker-button:not([disabled]) {
+    cursor: pointer;
+}
+
+.emoji-picker-button:not([disabled]):hover {
+    background: #383838;
+}
+
+#emoji-icon {
+    width: 25px;
+}
+
+emoji-picker {
+    position: absolute;
+    bottom: 60px;
+    --background: #2c2c2c;
+    --border-color: black;
+}
