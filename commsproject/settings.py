@@ -77,7 +77,7 @@ LOGIN_REDIRECT_URL = '/base/'
 LOGOUT_REDIRECT_URL = '/auth/login'
 
 WSGI_APPLICATION = 'commsproject.wsgi.application'
-
+AUTH_USER_MODEL = 'base.User'
 
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases

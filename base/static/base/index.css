@@ -123,10 +123,13 @@ body {
     display: flex;
     flex-direction: column;
     background-color: #2c2c2c;
+    height: 100%;
 }
 
 .chat-header {
     display: none;
+    position: relative;
+    top: 0;
     color: #fff;
     padding: 10px;
     text-align: center;
@@ -137,6 +140,7 @@ body {
     justify-content: center;
     align-items: center;
     gap: 5px;
+    height: 4vh;
 }
 
 .chat-messages {
@@ -146,7 +150,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    height: 100%;
+    max-height: 82vh;
     border-bottom: 1px solid black;
 
     &::-webkit-scrollbar-thumb:hover {
@@ -211,10 +215,14 @@ body {
 }
 
 .chat-input {
-    display: flex;
+    position: relative;
+    right: 0;
+    bottom: 0;
+    display: none;
     padding: 10px;
     background: #2c2c2c;
     color: white;
+    height: 6vh;
 }
 
 .chat-input input {

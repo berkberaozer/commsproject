@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.http import HttpResponseRedirect, HttpResponse, JsonResponse
 from django.urls import reverse
 from django.views import View
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
 from datetime import datetime
@@ -40,7 +40,7 @@ class RegisterView(View):
         form = RegistrationForm(request.POST)
         if form.is_valid():
             form = form.cleaned_data
-            user = User.objects.create_user(username=form['username'], email=form['email'],
+            user = get_user_model().objects.create_user(username=form['username'], email=form['email'],
                                             password=form['password'],
                                             first_name=form['first_name'],
                                             last_name=form['last_name'])
@@ -65,11 +65,11 @@ class IndexView(LoginRequiredMixin, View):
 class SendMessage(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         chat_id = request.POST.get('chat_id')
-        Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
+        Message.objects.create(source=get_user_model().objects.get(id=request.POST.get("source_id")),
                                target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"),
                                date=datetime.now(), chat=Chat.objects.get(id=chat_id))
         try:
-            Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
+            Message.objects.create(source=get_user_model().objects.get(id=request.POST.get("source_id")),
                                    message=request.POST.get("message"),
                                    date=datetime.now(),
                                    chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target,
@@ -77,8 +77,8 @@ class SendMessage(LoginRequiredMixin, View):
 
         except ObjectDoesNotExist:
             Chat.objects.create(belong=Chat.objects.get(id=chat_id).target,
-                                target=User.objects.get(id=request.POST.get("source_id")))
-            Message.objects.create(source=User.objects.get(id=request.POST.get("source_id")),
+                                target=get_user_model().objects.get(id=request.POST.get("source_id")))
+            Message.objects.create(source=get_user_model().objects.get(id=request.POST.get("source_id")),
                                    target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"),
                                    date=datetime.now(),
                                    chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target,
@@ -89,7 +89,7 @@ class SendMessage(LoginRequiredMixin, View):
 class SearchUser(View):
     def get(self, request, *args, **kwargs):
         searched_username = request.GET.get('username')
-        users = User.objects.filter(
+        users = get_user_model().objects.filter(
             Q(username__contains=searched_username) & ~Q(username=self.request.user.username)).values('first_name',
                                                                                                       'last_name', 'id',
                                                                                                       'username')
@@ -99,7 +99,7 @@ class SearchUser(View):
 class CreateChat(View):
     def post(self, request, *args, **kwargs):
         if request.POST.get('target'):
-            target = User.objects.get(username=request.POST.get('target'))
+            target = get_user_model().objects.get(username=request.POST.get('target'))
             belong = self.request.user
             chat = Chat.objects.create(belong=belong, target=target)
 
