@@ -89,7 +89,14 @@ class UserConsumer(WebsocketConsumer):
 
     def connect(self):
         self.username = self.scope["url_route"]["kwargs"]["username"]
-        self.online = True
+
+        if self.username == self.scope["user"].username:
+            print("connected")
+            self.online = True
+            async_to_sync(self.channel_layer.group_send)(
+                self.username, {"type": "is_online", "value": self.online}
+            )
+
         async_to_sync(self.channel_layer.group_add)(
             self.username, self.channel_name
         )
@@ -97,22 +104,29 @@ class UserConsumer(WebsocketConsumer):
         self.accept()
 
     def disconnect(self, close_code):
-        self.online = False
+        if self.username == self.scope["user"].username:
+            print("disconnected")
+            self.online = False
+            async_to_sync(self.channel_layer.group_send)(
+                self.username, {"type": "is_online", "value": self.online}
+            )
+
         async_to_sync(self.channel_layer.group_discard)(
             self.username, self.channel_name
         )
 
     def receive(self, text_data):
         data = json.loads(text_data)
-        source_username = data["source_username"]
-        chat_id = data["chat_id"]
-        print(chat_id)
 
         if data["type"] == "chat_creation":
+            source_username = data["source_username"]
+            chat_id = data["chat_id"]
             async_to_sync(self.channel_layer.group_send)(
                 self.username, {"type": "chat_creation", "source_username": source_username, "chat_id": chat_id}
             )
         elif data["type"] == "chat_creation_ack":
+            source_username = data["source_username"]
+            chat_id = data["chat_id"]
             async_to_sync(self.channel_layer.group_send)(
                 self.username, {"type": "chat_creation_ack", "chat_id": chat_id, "source_username": source_username}
             )

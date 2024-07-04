@@ -46,7 +46,10 @@
         </div>
 
         <div class="chat-container" style="background-image: url({% static 'base/background-default.png' %})">
-            <div class="chat-header" id="chat-header"></div>
+            <div class="chat-header" id="chat-header">
+                <span id="chat-header-username"></span>
+                <div id="online-icon"></div>
+            </div>
             <div class="chat-messages" id="chat-messages"></div>
 
             <div class="go-bottom-button" id="go-bottom-button">
@@ -102,11 +105,22 @@
         const goBottomNotification = document.getElementById("go-bottom-notification");
         const emojiPickerButton = document.getElementById("emoji-picker-button");
         const emojiPicker = document.querySelector("emoji-picker");
+        const chatHeader = document.getElementById('chat-header');
+        const chatHeaderUsername = document.getElementById('chat-header-username');
+        const chatHeaderOnline = document.getElementById('online-icon')
         const chatSockets = {};
+        let userSockets = {}
+        let isUserOnline = {};
+        userSockets['{{ request.user.username }}'] = createUserSocket("{{ request.user.username }}")
+        const userSocket = userSockets['{{ request.user.username }}']
 
-        const userSocket = createUserSocket("{{ request.user.username }}")
         {% for chat in user_chats %}
             createChatSocket({{chat.id}});
+            {% if chat.target.username == request.user.username and chat.belong.username != request.user.username %}
+                userSockets['{{chat.belong.username}}'] = createUserSocket('{{ chat.belong.username }}')
+            {% elif chat.target.username != request.user.username %}
+                userSockets['{{chat.target.username}}'] = createUserSocket('{{ chat.target.username }}')
+            {% endif %}
         {% endfor %}
 
         let notification;
@@ -139,6 +153,10 @@
                 `ws://${window.location.host}/base/user/${username}/`
             );
 
+            userSocket.onopen = function(e) {
+                isOnline(this);
+            }
+
             userSocket.onmessage = function(e) {
                 const data = JSON.parse(e["data"]);
                 if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation") {
@@ -166,8 +184,19 @@
                 } else if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation_ack") {
                     for (let i = 0; i < ongoingMessages.length; i++) {
                         if (parseInt(ongoingMessages[i]["chat_id"]) === data["chat_id"]) {
-                            console.log("hit");
                             sendMessage(chatSockets[ongoingMessages[i]["chat_id"]], 'chat_message', ongoingMessages[i]["source_id"], ongoingMessages[i]["message"]);
+                        }
+                    }
+                }
+                else if (data["type"] === "is_online") {
+                    isUserOnline[username] = data["value"];
+
+                    const talkTo = document.querySelector('.chat-list li.active').firstElementChild.textContent.trim();
+                    if (talkTo === username) {
+                        if (isUserOnline[talkTo]) {
+                            chatHeaderOnline.style.display = "block";
+                        } else {
+                            chatHeaderOnline.style.display = "none";
                         }
                     }
                 }
@@ -187,7 +216,7 @@
             chatSocket.chat_id = chat_id;
 
             chatSocket.onmessage = function(e) {
-                console.log("message hit");
+                console.log("MESSAGE HIT");
                 const data = JSON.parse(e["data"]);
                 const activeChat = document.querySelector('.chat-list li.active');
                 const chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
@@ -304,6 +333,15 @@
                 'chat_id': chat_id,
                 'source_username': source,
                 'type': "chat_creation_ack"
+                }));
+            });
+        }
+
+        function isOnline(socket) {
+            console.log("isOnline query");
+            waitForSocketConnection(socket, function() {
+                socket.send(JSON.stringify({
+                'type': "is_online"
                 }));
             });
         }
@@ -455,17 +493,21 @@
                     }
                 }
             }
-            const chatHeader = document.getElementById('chat-header');
-            chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
-            chatHeader.style.display = "block";
+
+            const talkTo = document.querySelector('.chat-list li.active').firstElementChild.textContent.trim();
+            chatHeaderUsername.textContent = talkTo;
+
+            if (isUserOnline[talkTo]) {
+                chatHeaderOnline.style.display = "block";
+            } else {
+                chatHeaderOnline.style.display = "none";
+            }
+            chatHeader.style.display = "flex";
         }
 
         function clearChat() {
-            const chatMessages = document.getElementById('chat-messages');
             chatMessages.innerHTML = '';
-
-            const chatHeader = document.getElementById('chat-header');
-            chatHeader.innerHTML = '';
+            chatHeaderUsername.textContent = '';
             chatHeader.style.display = "none";
         }
 
@@ -594,9 +636,17 @@
                         allMessages[data["chat_id"]] = [];
 
                         const recipientSocket = createUserSocket(activeChat.firstChild.textContent);
-                        sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
+                        userSockets[activeChat.firstChild.textContent] = recipientSocket;
 
-                        ongoingMessages.push({chat_id: activeChatId, source_id: {{ request.user.id }}, message: messageText});
+                        if (isUserOnline[activeChat.firstChild.textContent]) {
+                            console.log("online");
+                            sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
+                            ongoingMessages.push({chat_id: activeChatId, source_id: {{ request.user.id }}, message: messageText});
+                        }
+                        else {
+                            console.log("not online");
+                            sendMessage(chatSockets[activeChatId], "chat_message", {{ request.user.id }}, messageText);
+                        }
 
                         messageInput.value = '';
                         messageInput.focus();
