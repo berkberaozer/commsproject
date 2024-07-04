@@ -110,6 +110,8 @@
         {% endfor %}
 
         let notification;
+        let allMessages = {};
+
         {% for message in chat_messages %}
             {% if message.source.id != request.user.id %}
                 {% if message.hasRead == False %}
@@ -124,6 +126,11 @@
                     sendMessage(chatSockets[{{ message.chat_id }}], type="message_reached", id= {{ message.id }});
                 {% endif %}
             {% endif %}
+
+            if (!({{ message.chat.id }} in allMessages)) {
+                 allMessages[{{ message.chat.id }}] = [];
+            }
+            allMessages[{{ message.chat.id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source.id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat.id }}, 'hasReached': {{ message.hasReached|yesno:"true,false" }}, 'hasRead': {{ message.hasRead|yesno:"true,false" }}, 'hasSent': {{ message.hasSent|yesno:"true,false" }}});
         {% endfor %}
 
         function createUserSocket(username) {
@@ -177,6 +184,7 @@
 
                 if(data.type === 'chat_message') {
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
+                    allMessages[data["chat_id"]].push(data);
 
                     //if the incoming message's chat is open, show the message
                     if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
@@ -197,7 +205,7 @@
 
                         chatMessages.appendChild(getMessageElement(data));
 
-                        if (viewingOlderMessages && data.source_id !== {{ request.user.id }}) {
+                        if (viewingOlderMessages && data["source_id"] !== {{ request.user.id }}) {
                             goBottomNotification.textContent = parseInt(goBottomNotification.textContent) + 1 + "";
                             if(goBottomNotification.style.display === "none") {
                                 goBottomNotification.style.display = "block";
@@ -232,9 +240,9 @@
                         message.classList.add("blue");
                     }
                 }
-
+                console.log(data);
                 //if this user is the receiving end, notify the sender that message is reached
-                if(data.source_id !== {{ request.user.id }} && data.type === "chat_message") {
+                if(data["source_id"] !== {{ request.user.id }} && data.type === "chat_message") {
                     sendMessage(this, "message_reached", data.message_id);
                 }
             };
@@ -320,7 +328,7 @@
             const messageText = document.createElement('p');
             const messageTime = document.createElement('span');
 
-            messageElement.classList.add('message', message.source_id === {{ request.user.id }} ? 'sent' : 'received');
+            messageElement.classList.add('message', message["source_id"] === {{ request.user.id }} ? 'sent' : 'received');
             messageElement.setAttribute('hasRead', message["hasRead"]);
             messageElement.setAttribute('hasReached', message["hasReached"]);
             messageElement.setAttribute('hasSent', message["hasSent"]);
@@ -329,7 +337,8 @@
             messageText.textContent = message.message;
 
             messageTime.classList.add('messageTime');
-            const date = new Date(message.date);
+
+            const date = new Date(message.date + " UTC");
             messageTime.textContent = date.toLocaleTimeString('en-GB', { hour: "numeric", minute: "numeric"});
 
             messageElement.appendChild(messageText);
@@ -340,8 +349,7 @@
                 messageElement.setAttribute("message-id", message.id);
             }
 
-
-            if (message.source_id === {{ request.user.id }}) {
+            if (message["source_id"] === {{ request.user.id }}) {
                 const messageStatus = document.createElement('span');
                 messageStatus.classList.add("message-status");
                 messageStatus.textContent = " ";
@@ -369,68 +377,56 @@
             let dateElement;
 
             if (chatId !== "undefined") { //If chat is not newly created
-                $.ajax({
-                type: "GET",
-                url: "{% url 'base:get_messages' %}",
-                data: {
-                    "chat": chatId,
-                },
-                dataType: "json",
-                success: function (data) {
-                    const messages=data["messages"];
+                const messages=allMessages[chatId];
 
-                    if(messages.length > 0) {
-                        let flag = true;
-                        let unread = false;
-                        let currentDateIndicator = new Date(messages[0].date);
+                if(messages.length > 0) {
+                    let flag = true;
+                    let unread = false;
+                    let currentDateIndicator = new Date(messages[0].date);
 
-                        for (let i = 0; i < messages.length; i++) {
-                            const date = new Date(messages[i].date);
+                    for (let i = 0; i < messages.length; i++) {
+                        const date = new Date(messages[i].date);
 
-                            if (currentDateIndicator.getDay() !== date.getDay() || currentDateIndicator.getMonth() !== date.getMonth() || currentDateIndicator.getFullYear() !== date.getFullYear()) {
-                                flag = true;
-                            }
-                            if (flag) {
-                                dateElement = getDateElement(date);
-                                chatMessages.appendChild(dateElement);
+                        if (currentDateIndicator.getDay() !== date.getDay() || currentDateIndicator.getMonth() !== date.getMonth() || currentDateIndicator.getFullYear() !== date.getFullYear()) {
+                            flag = true;
+                        }
+                        if (flag) {
+                            dateElement = getDateElement(date);
+                            chatMessages.appendChild(dateElement);
 
-                                flag = false;
-                                currentDateIndicator = date;
-                            }
+                            flag = false;
                             currentDateIndicator = date;
-                            if(messages[i].source_id !== {{ request.user.id }} && messages[i].hasRead === false && !unread) {
-                                unread = true;
+                        }
+                        currentDateIndicator = date;
+                        if(messages[i]["source_id"] !== {{ request.user.id }} && messages[i].hasRead === false && !unread) {
+                            unread = true;
 
-                                const unreadElement = document.createElement("div");
-                                unreadElement.id = "unread-messages";
-                                unreadElement.textContent = "↓ Unread Messages ↓";
+                            const unreadElement = document.createElement("div");
+                            unreadElement.id = "unread-messages";
+                            unreadElement.textContent = "↓ Unread Messages ↓";
 
-                                chatMessages.appendChild(unreadElement);
-                            }
-
-                            messageElement = getMessageElement(messages[i]);
-                            chatMessages.appendChild(messageElement);
+                            chatMessages.appendChild(unreadElement);
                         }
 
-                        chatMessages.dispatchEvent(new CustomEvent("scroll"));
+                        messageElement = getMessageElement(messages[i]);
+                        chatMessages.appendChild(messageElement);
+                    }
 
-                        const chatHeader = document.getElementById('chat-header');
-                        chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
-                        chatHeader.style.display = "block";
+                    chatMessages.dispatchEvent(new CustomEvent("scroll"));
 
-                        const firstUnread = document.querySelector('.message.received[hasread="false"]');
+                    const chatHeader = document.getElementById('chat-header');
+                    chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
+                    chatHeader.style.display = "block";
 
-                        chatMessages.scrollTo({top: chatMessages.scrollHeight, behavior: "smooth"})
-                        if(firstUnread != null) {
-                            chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight, behavior: "instant"});
-                        } else {
-                            chatMessages.scrollTo({top : chatMessages.scrollHeight, behavior: "instant"});
-                        }
-                    }},
-                failure: function () {
-                    alert("failure");
+                    const firstUnread = document.querySelector('.message.received[hasread="false"]');
+
+                    chatMessages.scrollTo({top: chatMessages.scrollHeight, behavior: "smooth"})
+                    if(firstUnread != null) {
+                        chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight, behavior: "instant"});
+                    } else {
+                        chatMessages.scrollTo({top : chatMessages.scrollHeight, behavior: "instant"});
+                    }
                 }
-            });
             }
         }
 
@@ -552,6 +548,7 @@
                         createChatSocket(data["chat_id"]);
                         const recipientSocket = createUserSocket(activeChat.firstChild.textContent);
 
+                        allMessages[data["chat_id"]] = [];
                         sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
                         sendMessage(chatSockets[activeChatId], 'chat_message', {{ request.user.id }}, messageText);
 
