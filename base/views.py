@@ -58,16 +58,8 @@ class IndexView(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         chats = Chat.objects.filter(Q(belong=self.request.user) | Q(target=self.request.user))
         data = {'user_chats': chats,
-                'chat_messages': Message.objects.filter(chat__in=chats)}
+                'chat_messages': list(Message.objects.filter(chat__in=chats).order_by('date').values())}
         return HttpResponse(render(context=data, request=self.request, template_name="base/index.html"))
-
-
-class GetMessages(LoginRequiredMixin, View):
-    def get(self, request, *args, **kwargs):
-        chat_id = self.request.GET.get('chat')
-        queryset = Message.objects.filter(chat=chat_id).order_by('date').values()
-
-        return JsonResponse({"messages": list(queryset)})
 
 
 class SendMessage(LoginRequiredMixin, View):

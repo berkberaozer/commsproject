@@ -111,11 +111,12 @@
 
         let notification;
         let allMessages = {};
+        let ongoingMessages = [];
 
         {% for message in chat_messages %}
-            {% if message.source.id != request.user.id %}
+            {% if message.source_id != request.user.id %}
                 {% if message.hasRead == False %}
-                    notification = document.querySelector(".chat-notification[chat-id='{{ message.chat.id }}']");
+                    notification = document.querySelector(".chat-notification[chat-id='{{ message.chat_id }}']");
                     if (notification.style.display === "none") {
                         notification.style.display = "";
                     }
@@ -127,10 +128,10 @@
                 {% endif %}
             {% endif %}
 
-            if (!({{ message.chat.id }} in allMessages)) {
-                 allMessages[{{ message.chat.id }}] = [];
+            if (!({{ message.chat_id }} in allMessages)) {
+                 allMessages[{{ message.chat_id }}] = [];
             }
-            allMessages[{{ message.chat.id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source.id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat.id }}, 'hasReached': {{ message.hasReached|yesno:"true,false" }}, 'hasRead': {{ message.hasRead|yesno:"true,false" }}, 'hasSent': {{ message.hasSent|yesno:"true,false" }}});
+            allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source_id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'hasReached': {{ message.hasReached|yesno:"true,false" }}, 'hasRead': {{ message.hasRead|yesno:"true,false" }}, 'hasSent': {{ message.hasSent|yesno:"true,false" }}});
         {% endfor %}
 
         function createUserSocket(username) {
@@ -139,7 +140,8 @@
             );
 
             userSocket.onmessage = function(e) {
-                if ("{{ request.user.username }}" !== JSON.parse(e["data"])["source_username"]) {
+                const data = JSON.parse(e["data"]);
+                if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation") {
                     const chat_id = JSON.parse(e['data'])['chat_id'];
                     const username = JSON.parse(e["data"])["source_username"];
                     const newChat = document.querySelector(".chat[chat-id='${chat_id}']");
@@ -147,18 +149,25 @@
                     if (newChat == null) {
                         const chatList = document.getElementById("chat-list");
                         const chatElement = getChatElement(chat_id, username)
-
-                        const notificationElement = chatElement.firstChild.nextSibling;
-                        notificationElement.style.display = "";
-                        notificationElement.textContent = "1";
+                        chatElement.removeAttribute("new");
 
                         chatList.insertBefore(chatElement, chatList.firstChild);
 
                         createChatSocket(chat_id);
+                        sendChatCreationAckMessage(this, chat_id, '{{ request.user.username }}', chatSockets[chat_id]);
+
+                        allMessages[chat_id] = [];
 
                         const noChatsBanner = document.querySelector("#no-chats-banner");
                         if (noChatsBanner) {
                             noChatsBanner.remove();
+                        }
+                    }
+                } else if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation_ack") {
+                    for (let i = 0; i < ongoingMessages.length; i++) {
+                        if (parseInt(ongoingMessages[i]["chat_id"]) === data["chat_id"]) {
+                            console.log("hit");
+                            sendMessage(chatSockets[ongoingMessages[i]["chat_id"]], 'chat_message', ongoingMessages[i]["source_id"], ongoingMessages[i]["message"]);
                         }
                     }
                 }
@@ -178,6 +187,7 @@
             chatSocket.chat_id = chat_id;
 
             chatSocket.onmessage = function(e) {
+                console.log("message hit");
                 const data = JSON.parse(e["data"]);
                 const activeChat = document.querySelector('.chat-list li.active');
                 const chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
@@ -241,8 +251,6 @@
                 }
                 else if (data.type === "message_read" && activeChat != null) {
                     const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
-                    console.log("AAAAAAAAAAAAAAA");
-                    console.log(data.message_id);
                     readMessage(chat_id, data.message_id);
 
                     if(message) {
@@ -286,6 +294,16 @@
                 'chat_id': chat_id,
                 'source_username': source,
                 'type': "chat_creation"
+                }));
+            });
+        }
+
+        function sendChatCreationAckMessage(socket, chat_id, source, chat_socket) {
+            waitForSocketConnection(chat_socket, function() {
+                socket.send(JSON.stringify({
+                'chat_id': chat_id,
+                'source_username': source,
+                'type': "chat_creation_ack"
                 }));
             });
         }
@@ -424,10 +442,6 @@
 
                     chatMessages.dispatchEvent(new CustomEvent("scroll"));
 
-                    const chatHeader = document.getElementById('chat-header');
-                    chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
-                    chatHeader.style.display = "block";
-
                     const firstUnread = document.querySelector('.message.received[hasread="false"]');
 
                     chatMessages.scrollTo({top: chatMessages.scrollHeight, behavior: "smooth"})
@@ -441,6 +455,9 @@
                     }
                 }
             }
+            const chatHeader = document.getElementById('chat-header');
+            chatHeader.textContent = document.querySelector('.chat-list li.active').firstElementChild.textContent;
+            chatHeader.style.display = "block";
         }
 
         function clearChat() {
@@ -486,15 +503,11 @@
                             activeChat.remove();
                         }
 
-                        messageInput.setAttribute("disabled", "true");
-                        sendButton.setAttribute("disabled", "true");
-                        emojiPickerButton.setAttribute("disabled", "true");
+                        disableMessageInput()
                         clearChat();
                     }
                     else {
-                        messageInput.removeAttribute("disabled");
-                        sendButton.removeAttribute("disabled");
-                        emojiPickerButton.removeAttribute("disabled");
+                        enableMessageInput()
 
                         if(activeChat) {
                             activeChat.classList.remove("active");
@@ -578,11 +591,12 @@
                         activeChatId = activeChat.getAttribute('chat-id');
 
                         createChatSocket(data["chat_id"]);
-                        const recipientSocket = createUserSocket(activeChat.firstChild.textContent);
-
                         allMessages[data["chat_id"]] = [];
+
+                        const recipientSocket = createUserSocket(activeChat.firstChild.textContent);
                         sendChatCreationMessage(recipientSocket, data["chat_id"], "{{ request.user.username }}");
-                        sendMessage(chatSockets[activeChatId], 'chat_message', {{ request.user.id }}, messageText);
+
+                        ongoingMessages.push({chat_id: activeChatId, source_id: {{ request.user.id }}, message: messageText});
 
                         messageInput.value = '';
                         messageInput.focus();
@@ -636,6 +650,12 @@
             messageInput.removeAttribute("disabled");
             sendButton.removeAttribute("disabled");
             emojiPickerButton.removeAttribute("disabled");
+        }
+
+        function disableMessageInput() {
+            messageInput.setAttribute("disabled", "true");
+            sendButton.setAttribute("disabled", "true");
+            emojiPickerButton.setAttribute("disabled", "true");
         }
 
         document.getElementById('search-user-button').addEventListener('click', function() {
@@ -711,12 +731,10 @@
                                 }
 
                                 const chatElement = getChatElement(data["chat_id"], username.trim());
-                                chatElement.classList.add("active");
                                 chatList.appendChild(chatElement);
 
-                                loadChat(data["chat_id"]);
+                                chatElement.click()
 
-                                enableMessageInput();
                                 userList.innerHTML = '';
                             }
                         }));

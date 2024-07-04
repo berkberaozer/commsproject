@@ -106,10 +106,15 @@ class UserConsumer(WebsocketConsumer):
         data = json.loads(text_data)
         source_username = data["source_username"]
         chat_id = data["chat_id"]
+        print(chat_id)
 
         if data["type"] == "chat_creation":
             async_to_sync(self.channel_layer.group_send)(
                 self.username, {"type": "chat_creation", "source_username": source_username, "chat_id": chat_id}
+            )
+        elif data["type"] == "chat_creation_ack":
+            async_to_sync(self.channel_layer.group_send)(
+                self.username, {"type": "chat_creation_ack", "chat_id": chat_id, "source_username": source_username}
             )
         elif data["type"] == "is_online":
             async_to_sync(self.channel_layer.group_send)(
@@ -122,6 +127,9 @@ class UserConsumer(WebsocketConsumer):
         message_type = event["type"]
 
         self.send(text_data=json.dumps({"type": message_type, "source_username": source_username, "chat_id": chat_id}))
+
+    def chat_creation_ack(self, event):
+        self.send(text_data=json.dumps({"type": event["type"], "chat_id": event["chat_id"], "source_username": event["source_username"]}))
 
     def is_online(self, event):
         self.send(text_data=json.dumps({"type": event["type"], "value": event["value"]}))
