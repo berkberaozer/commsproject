@@ -210,6 +210,12 @@
                             if(goBottomNotification.style.display === "none") {
                                 goBottomNotification.style.display = "block";
                             }
+
+                            if (chat_notification.style.display === "none") {
+                                chat_notification.style.display = ""
+                                chat_notification.textContent = "0";
+                            }
+                            chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
                         } else {
                             chatMessages.scrollTo(0, chatMessages.scrollHeight);
                         }
@@ -235,12 +241,15 @@
                 }
                 else if (data.type === "message_read" && activeChat != null) {
                     const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                    console.log("AAAAAAAAAAAAAAA");
+                    console.log(data.message_id);
+                    readMessage(chat_id, data.message_id);
 
                     if(message) {
                         message.classList.add("blue");
                     }
                 }
-                console.log(data);
+
                 //if this user is the receiving end, notify the sender that message is reached
                 if(data["source_id"] !== {{ request.user.id }} && data.type === "chat_message") {
                     sendMessage(this, "message_reached", data.message_id);
@@ -377,7 +386,7 @@
             let dateElement;
 
             if (chatId !== "undefined") { //If chat is not newly created
-                const messages=allMessages[chatId];
+                let messages = allMessages[chatId];
 
                 if(messages.length > 0) {
                     let flag = true;
@@ -398,6 +407,7 @@
                             currentDateIndicator = date;
                         }
                         currentDateIndicator = date;
+
                         if(messages[i]["source_id"] !== {{ request.user.id }} && messages[i].hasRead === false && !unread) {
                             unread = true;
 
@@ -423,6 +433,9 @@
                     chatMessages.scrollTo({top: chatMessages.scrollHeight, behavior: "smooth"})
                     if(firstUnread != null) {
                         chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight, behavior: "instant"});
+                        goBottomButton.style.display = "block";
+                        goBottomNotification.style.display = "block";
+                        goBottomNotification.textContent = document.querySelector('.chat-list li.active .chat-notification').textContent;
                     } else {
                         chatMessages.scrollTo({top : chatMessages.scrollHeight, behavior: "instant"});
                     }
@@ -437,6 +450,16 @@
             const chatHeader = document.getElementById('chat-header');
             chatHeader.innerHTML = '';
             chatHeader.style.display = "none";
+        }
+
+        function readMessage(chat_id, message_id) {
+            message_id = parseInt(message_id);
+            for (let i = 0; i < allMessages[chat_id].length; i++) {
+                if (allMessages[chat_id][i]["message_id"] === message_id) {
+                    allMessages[chat_id][i].hasRead = true;
+                    break;
+                }
+            }
         }
 
         document.getElementById('chat-list').addEventListener('click', function(event) {
@@ -501,9 +524,16 @@
                     if (message.offsetTop - event.target.offsetTop < event.target.scrollTop + event.target.clientHeight - message.scrollHeight) {
                         message.setAttribute("hasread", 'true');
                         notification.textContent = parseInt(notification.textContent) - 1 + "";
+
+                        if (goBottomNotification.textContent > 0) {
+                            goBottomNotification.textContent = parseInt(goBottomNotification.textContent) - 1 + "";
+                        }
+
                         if(parseInt(notification.textContent) === 0) {
                             notification.style.display = "none";
                         }
+
+                        readMessage(activeChatId, message.getAttribute("message-id"));
                         sendMessage(chatSockets[activeChatId], "message_read", message.getAttribute('message-id'));
                     }
                 });
@@ -511,6 +541,8 @@
                 if (chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight) {
                     if (goBottomButton.style.display === "none") {
                         goBottomButton.style.display = "block";
+
+
                         if (parseInt(goBottomNotification.textContent) > 0) {
                             goBottomNotification.style.display = "block";
                         }
@@ -518,7 +550,7 @@
                 } else if (goBottomButton.style.display !== "none") {
                     goBottomButton.style.display = "none";
                     goBottomNotification.style.display = "none";
-                    goBottomNotification.textContent = 0;
+                    goBottomNotification.textContent = 0 + "";
                 }
             }
         });
