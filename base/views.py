@@ -1,5 +1,3 @@
-from django.contrib import messages
-from django.core.exceptions import ObjectDoesNotExist
 from django.shortcuts import render
 from django.http import HttpResponseRedirect, HttpResponse, JsonResponse
 from django.urls import reverse
@@ -7,11 +5,10 @@ from django.views import View
 from django.contrib.auth import authenticate, login, get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from datetime import datetime
 from .forms import RegistrationForm
 from django.db.models import Q
 
-from .models import User, Chat, Message
+from .models import Chat, Message
 
 
 # Create your views here.
@@ -38,13 +35,13 @@ class RegisterView(View):
 
     def post(self, request, *args, **kwargs):
         form = RegistrationForm(request.POST)
+
         if form.is_valid():
             form = form.cleaned_data
-            user = get_user_model().objects.create_user(username=form['username'], email=form['email'],
-                                            password=form['password'],
-                                            first_name=form['first_name'],
-                                            last_name=form['last_name'])
-            user.save()
+            get_user_model().objects.create_user(username=form['username'], email=form['email'],
+                                                 password=form['password'],
+                                                 first_name=form['first_name'],
+                                                 last_name=form['last_name'])
 
             return HttpResponseRedirect(reverse('base:index'))
         else:
@@ -53,56 +50,31 @@ class RegisterView(View):
 
 class IndexView(LoginRequiredMixin, View):
     login_url = '../auth/login/'
-    redirect_field_name = ''
 
     def get(self, request, *args, **kwargs):
         chats = Chat.objects.filter(Q(belong=self.request.user) | Q(target=self.request.user))
-        data = {'user_chats': chats,
-                'chat_messages': list(Message.objects.filter(chat__in=chats).order_by('date').values())}
-        return HttpResponse(render(context=data, request=self.request, template_name="base/index.html"))
+
+        return render(context={'chats': chats}, request=self.request, template_name="base/index.html")
 
 
-class SendMessage(LoginRequiredMixin, View):
-    def post(self, request, *args, **kwargs):
-        chat_id = request.POST.get('chat_id')
-        Message.objects.create(source=get_user_model().objects.get(id=request.POST.get("source_id")),
-                               target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"),
-                               date=datetime.now(), chat=Chat.objects.get(id=chat_id))
-        try:
-            Message.objects.create(source=get_user_model().objects.get(id=request.POST.get("source_id")),
-                                   message=request.POST.get("message"),
-                                   date=datetime.now(),
-                                   chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target,
-                                                         target=Chat.objects.get(id=chat_id).belong))
-
-        except ObjectDoesNotExist:
-            Chat.objects.create(belong=Chat.objects.get(id=chat_id).target,
-                                target=get_user_model().objects.get(id=request.POST.get("source_id")))
-            Message.objects.create(source=get_user_model().objects.get(id=request.POST.get("source_id")),
-                                   target=Chat.objects.get(id=chat_id).target, message=request.POST.get("message"),
-                                   date=datetime.now(),
-                                   chat=Chat.objects.get(belong=Chat.objects.get(id=chat_id).target,
-                                                         target=Chat.objects.get(id=chat_id).belong))
-        return JsonResponse({"success": True})
-
-
-class SearchUser(View):
+class SearchUser(LoginRequiredMixin, View):  # case-insensitive user search, request user is excluded
     def get(self, request, *args, **kwargs):
         searched_username = request.GET.get('username')
-        users = get_user_model().objects.filter(
-            Q(username__contains=searched_username) & ~Q(username=self.request.user.username)).values('first_name',
-                                                                                                      'last_name', 'id',
-                                                                                                      'username')
+
+        users = get_user_model().objects.filter(Q(username__icontains=searched_username) &
+                                                ~Q(username=self.request.user.username)).values('first_name',
+                                                                                                'last_name', 'id',
+                                                                                                'username')
+
         return JsonResponse({"users": list(users)})
 
 
-class CreateChat(View):
+class CreateChat(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         if request.POST.get('target'):
             target = get_user_model().objects.get(username=request.POST.get('target'))
-            belong = self.request.user
-            chat = Chat.objects.create(belong=belong, target=target)
+            chat = Chat.objects.create(belong=self.request.user, target=target)
 
-            return JsonResponse({"chat_id": chat.id})
+            return JsonResponse({"chat_id": chat.id, "success": True})
         else:
             return JsonResponse({"success": False})

@@ -17,7 +17,11 @@ class Chat(models.Model):
     id = models.AutoField(primary_key=True)
     belong = models.ForeignKey(User, on_delete=models.CASCADE, related_name='opened_chats')
     target = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_chats')
-    UniqueConstraint(fields=('belong', 'to'), name='unique_person')
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['belong', 'target'], name='unique_chat'),
+        ]
 
     def __str__(self):
         return self.belong.__str__() + "-" + self.target.__str__()

@@ -151,7 +151,6 @@ body {
     flex-direction: column;
     gap: 10px;
     max-height: 82vh;
-    border-bottom: 1px solid black;
 
     &::-webkit-scrollbar-thumb:hover {
         background: #a8a8a8 !important;
@@ -223,6 +222,7 @@ body {
     background: #2c2c2c;
     color: white;
     height: 6vh;
+    border-top: 1px solid black;
 }
 
 .chat-input input {

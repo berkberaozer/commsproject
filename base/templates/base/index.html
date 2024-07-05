@@ -32,8 +32,8 @@
             </div>
 
             <ul class="chat-list" id="chat-list">
-                {% if user_chats.count > 0 %}
-                        {% for chat in user_chats %}
+                {% if chats.count > 0 %}
+                        {% for chat in chats %}
                                 <li chat-id="{{ chat.id }}" class="chat" style="text-wrap: wrap">
                                     <span>{% if chat.target.username == request.user.username %}
                                         {{chat.belong|cut:" "}} {% else %} {{chat.target|cut:" " }} {% endif %}
@@ -116,22 +116,20 @@
         let isUserOnline = {};
         userSockets['{{ request.user.username }}'] = createUserSocket("{{ request.user.username }}")
         const userSocket = userSockets['{{ request.user.username }}']
+                let notification;
+        let allMessages = {};
+        let ongoingMessages = [];
 
-        {% for chat in user_chats %}
+        {% for chat in chats %}
             createChatSocket({{chat.id}});
             {% if chat.target.username == request.user.username and chat.belong.username != request.user.username %}
                 userSockets['{{chat.belong.username}}'] = createUserSocket('{{ chat.belong.username }}')
             {% elif chat.target.username != request.user.username %}
                 userSockets['{{chat.target.username}}'] = createUserSocket('{{ chat.target.username }}')
             {% endif %}
-        {% endfor %}
 
-        let notification;
-        let allMessages = {};
-        let ongoingMessages = [];
-
-        {% for message in chat_messages %}
-            {% if message.source_id != request.user.id %}
+            {% for message in chat.messages.all %}
+                {% if message.source_id != request.user.id %}
                 {% if message.hasRead == False %}
                     notification = document.querySelector(".chat-notification[chat-id='{{ message.chat_id }}']");
                     if (notification.style.display === "none") {
@@ -149,6 +147,8 @@
                  allMessages[{{ message.chat_id }}] = [];
             }
             allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source_id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'hasReached': {{ message.hasReached|yesno:"true,false" }}, 'hasRead': {{ message.hasRead|yesno:"true,false" }}, 'hasSent': {{ message.hasSent|yesno:"true,false" }}});
+
+            {% endfor %}
         {% endfor %}
 
         function createUserSocket(username) {
@@ -188,6 +188,7 @@
                     for (let i = 0; i < ongoingMessages.length; i++) {
                         if (parseInt(ongoingMessages[i]["chat_id"]) === data["chat_id"]) {
                             sendMessage(chatSockets[ongoingMessages[i]["chat_id"]], 'chat_message', ongoingMessages[i]["source_id"], ongoingMessages[i]["message"]);
+                            ongoingMessages[i]["chat_id"] = "sent";
                         }
                     }
                 }
@@ -211,7 +212,7 @@
             }
 
             userSocket.onclose = function(e) {
-                console.error('Chat socket for ${username} closed unexpectedly, ${e}');
+                console.error(e);
             };
 
             return userSocket;
@@ -245,7 +246,7 @@
 
                         //when user responds someone, remove the "Unread Messages" indicator.
                         const unreadMessagesIndicator = document.getElementById("unread-messages");
-                        if(unreadMessagesIndicator != null) {
+                        if(unreadMessagesIndicator != null && data.source_id === {{ request.user.id }}) {
                             unreadMessagesIndicator.remove();
                         }
 
@@ -301,7 +302,7 @@
             };
 
             chatSocket.onclose = function(e) {
-                console.error('Chat socket for ${chat_id} closed unexpectedly, ${e}');
+                console.error(e);
             };
 
             chatSockets[chat_id] = chatSocket;
@@ -450,7 +451,7 @@
             if (chatId !== "undefined") { //If chat is not newly created
                 let messages = allMessages[chatId];
 
-                if(messages.length > 0) {
+                if(messages && messages.length > 0) {
                     let flag = true;
                     let unread = false;
                     let currentDateIndicator = new Date(messages[0].date);
@@ -487,7 +488,8 @@
                     const firstUnread = document.querySelector('.message.received[hasread="false"]');
 
                     if(firstUnread != null) {
-                        chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight, behavior: "instant"});
+                        chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight / 2, behavior: "instant"});
+
                         goBottomButton.style.display = "block";
                         goBottomNotification.style.display = "block";
                         goBottomNotification.textContent = document.querySelector('.chat-list li.active .chat-notification').textContent;
@@ -516,6 +518,7 @@
             chatMessages.innerHTML = '';
             chatHeaderUsername.textContent = '';
             chatHeader.style.display = "none";
+            messageInput.value = '';
         }
 
         function readMessage(chat_id, message_id) {
@@ -545,6 +548,7 @@
                         emojiPicker.style.display = "none";
                     }
 
+                    clearChat();
                     if (target.classList.contains("active")) {
                         activeChat.classList.remove('active');
 
@@ -557,7 +561,7 @@
                         }
 
                         disableMessageInput()
-                        clearChat();
+
                         if(goBottomButton.style.display === "block") {
                             goBottomButton.style.display = "none";
                             goBottomNotification.textContent = "0";

@@ -135,6 +135,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ASGI
 ASGI_APPLICATION = "commsproject.asgi.application"
 CHANNEL_LAYERS = {
     "default": {
