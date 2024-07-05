@@ -146,6 +146,8 @@
             if (!({{ message.chat_id }} in allMessages)) {
                  allMessages[{{ message.chat_id }}] = [];
             }
+
+            console.log({{ message.id }});
             allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source_id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'hasReached': {{ message.hasReached|yesno:"true,false" }}, 'hasRead': {{ message.hasRead|yesno:"true,false" }}, 'hasSent': {{ message.hasSent|yesno:"true,false" }}});
 
             {% endfor %}
@@ -162,6 +164,7 @@
 
             userSocket.onmessage = function(e) {
                 const data = JSON.parse(e["data"]);
+                console.log(data);
                 if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation") {
                     const chat_id = JSON.parse(e['data'])['chat_id'];
                     const username = JSON.parse(e["data"])["source_username"];
@@ -280,6 +283,7 @@
                     }
                 } else if (data.type === "message_reached" && activeChat != null) {
                     const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                    reachedMessage(chat_id, data.message_id);
 
                     if(message) {
                         message.textContent = " ";
@@ -526,6 +530,16 @@
             for (let i = 0; i < allMessages[chat_id].length; i++) {
                 if (allMessages[chat_id][i]["message_id"] === message_id) {
                     allMessages[chat_id][i].hasRead = true;
+                    break;
+                }
+            }
+        }
+
+        function reachedMessage(chat_id, message_id) {
+            message_id = parseInt(message_id);
+            for (let i = 0; i < allMessages[chat_id].length; i++) {
+                if (allMessages[chat_id][i]["message_id"] === message_id) {
+                    allMessages[chat_id][i].hasReached = true;
                     break;
                 }
             }

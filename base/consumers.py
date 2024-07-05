@@ -104,11 +104,11 @@ class UserConsumer(WebsocketConsumer):
         message_type = data["type"]
 
         if message_type == "chat_creation" or message_type == "chat_creation_ack":
-            async_to_sync(self.channel_layer.group_send)(self.username, {"type": "chat_creation",
+            async_to_sync(self.channel_layer.group_send)(self.username, {"type": message_type,
                                                                          "source_username": data["source_username"],
                                                                          "chat_id": data["chat_id"]})
         elif message_type == "is_online":
-            async_to_sync(self.channel_layer.group_send)(self.username, {"type": "is_online",
+            async_to_sync(self.channel_layer.group_send)(self.username, {"type": message_type,
                                                                          "value": list(get_user_model().objects.filter
                                                                                        (username=self.username).values(
                                                                              'online'))[0]["online"]})

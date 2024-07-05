@@ -37,5 +37,8 @@ class Message(models.Model):
     hasRead = models.BooleanField(default=False)
     hasSent = models.BooleanField(default=True)
 
+    class Meta:
+        ordering = ["date"]
+
     def __str__(self):
         return self.source.__str__() + ": " + self.message + " to " + self.chat.__str__()
