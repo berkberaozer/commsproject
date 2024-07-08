@@ -85,14 +85,18 @@ AUTH_USER_MODEL = 'base.User'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',
+        'USER': 'postgres',
+        'PASSWORD': 'postgres',
+        'HOST': 'db',
+        'PORT': 5432,
         'OPTIONS': {
-            'service': 'my_service',
-            'passfile': '.my_pgpass',
+            #'service': 'my_service',
+            #'passfile': '.my_pgpass',
             'isolation_level': IsolationLevel.SERIALIZABLE,
         },
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -141,7 +145,8 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+            #"hosts": [("127.0.0.1", 6379)],
+            "hosts": [("redis", 6379)],
         },
     },
 }

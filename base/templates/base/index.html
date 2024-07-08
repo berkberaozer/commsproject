@@ -147,7 +147,6 @@
                  allMessages[{{ message.chat_id }}] = [];
             }
 
-            console.log({{ message.id }});
             allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source_id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'hasReached': {{ message.hasReached|yesno:"true,false" }}, 'hasRead': {{ message.hasRead|yesno:"true,false" }}, 'hasSent': {{ message.hasSent|yesno:"true,false" }}});
 
             {% endfor %}
@@ -164,29 +163,34 @@
 
             userSocket.onmessage = function(e) {
                 const data = JSON.parse(e["data"]);
-                console.log(data);
+
                 if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation") {
                     const chat_id = JSON.parse(e['data'])['chat_id'];
                     const username = JSON.parse(e["data"])["source_username"];
-                    const newChat = document.querySelector(".chat[chat-id='${chat_id}']");
+                    const newChat = document.querySelector(".chat[chat-id='undefined']");
 
-                    if (newChat == null) {
+                    if (newChat.firstChild.textContent !==  username) {
                         const chatList = document.getElementById("chat-list");
                         const chatElement = getChatElement(chat_id, username)
                         chatElement.removeAttribute("new");
 
                         chatList.insertBefore(chatElement, chatList.firstChild);
 
-                        createChatSocket(chat_id);
-                        sendChatCreationAckMessage(this, chat_id, '{{ request.user.username }}', chatSockets[chat_id]);
-
-                        allMessages[chat_id] = [];
-
                         const noChatsBanner = document.querySelector("#no-chats-banner");
                         if (noChatsBanner) {
                             noChatsBanner.remove();
                         }
+                    } else {
+                        newChat.setAttribute("chat-id", chat_id);
+                        newChat.removeAttribute("new");
+
+                        const notification = document.querySelector(".chat-notification[chat-id='undefined']");
+                        notification.setAttribute("chat-id", chat_id);
                     }
+                    createChatSocket(chat_id);
+                    sendChatCreationAckMessage(this, chat_id, '{{ request.user.username }}', chatSockets[chat_id]);
+
+                    allMessages[chat_id] = [];
                 } else if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation_ack") {
                     for (let i = 0; i < ongoingMessages.length; i++) {
                         if (parseInt(ongoingMessages[i]["chat_id"]) === data["chat_id"]) {
@@ -555,7 +559,7 @@
                     target = event.target;
                 }
 
-                if(event.target.tagName.toLowerCase() === "li") {
+                if(target.tagName.toLowerCase() === "li") {
                     const activeChat = document.querySelector('.chat-list li.active');
 
                     if(emojiPicker.style.display !== "none") {
@@ -785,7 +789,7 @@
                             }
 
                             chats.forEach(chat => {
-                                if (username.trim() === chat.firstChild.nextSibling.textContent.trim()) { //open the chat if it exists
+                                if (username.trim() === chat.firstChild.textContent.trim()) { //open the chat if it exists
                                     alreadyChatting = true;
                                     chat.click();
                                     userList.innerHTML = '';
