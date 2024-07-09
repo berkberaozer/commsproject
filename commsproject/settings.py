@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 from django.db.backends.postgresql.psycopg_any import IsolationLevel
 
@@ -91,8 +92,8 @@ DATABASES = {
         'HOST': 'db',
         'PORT': 5432,
         'OPTIONS': {
-            #'service': 'my_service',
-            #'passfile': '.my_pgpass',
+            # 'service': 'my_service',
+            # 'passfile': '.my_pgpass',
             'isolation_level': IsolationLevel.SERIALIZABLE,
         },
     }
@@ -145,7 +146,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            #"hosts": [("127.0.0.1", 6379)],
+            # "hosts": [("127.0.0.1", 6379)],
             "hosts": [("redis", 6379)],
         },
     },
@@ -154,3 +155,6 @@ CHANNEL_LAYERS = {
 INTERNAL_IPS = [
     "127.0.0.1",
 ]
+
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'

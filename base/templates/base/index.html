@@ -36,8 +36,7 @@
                         {% for chat in chats %}
                                 <li chat-id="{{ chat.id }}" class="chat" style="text-wrap: wrap">
                                     <span>{% if chat.target.username == request.user.username %}
-                                        {{chat.belong|cut:" "}} {% else %} {{chat.target|cut:" " }} {% endif %}
-                                    </span>
+                                        {{chat.belong}}{% else %}{{chat.target}}{% endif %}</span>
                                     <span chat-id="{{ chat.id }}" class="chat-notification" style="display: none">0</span>
                                 </li>
                         {% endfor %}
@@ -62,8 +61,15 @@
                 {% csrf_token %}
                 <emoji-picker style="display: none" id="emoji-picker"></emoji-picker>
                 <div class="emoji-picker-button" style="display: block" id="emoji-picker-button" disabled="true">
-                    <img src="{% static 'base/emoji-icon.png' %}" alt="Go down" id="emoji-icon" class="sidebar-icon">
+                    <img src="{% static 'base/emoji-icon.png' %}" alt="Select emoji" id="emoji-icon" class="sidebar-icon">
                 </div>
+                <div class="emoji-picker-button" style="display: block" id="attachment-button" disabled="true">
+                    <img src="{% static 'base/attachment.png' %}" alt="Attach file" id="attachment-icon" class="sidebar-icon">
+                </div>
+
+                <form id="file-form" method="POST" enctype="multipart/form-data" hidden="hidden">
+                    <input type="file" id="file-input" hidden="hidden">
+                </form>
 
                 <label for="message-input"></label>
                 <input type="text" id="message-input" placeholder="Type your message here..." disabled>
@@ -74,25 +80,26 @@
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
+        function getCookie(name) {
+             let cookieValue = null;
+
+             if (document.cookie && document.cookie !== '') {
+                 let cookies = document.cookie.split(';');
+                 for (let i = 0; i < cookies.length; i++) {
+                     let cookie = jQuery.trim(cookies[i]);
+
+                     if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                         cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                         break;
+                     }
+                 }
+             }
+             return cookieValue;
+        }
+
         //makes the ajax django auth compatible by appending the django csrf token to ajax header
         $.ajaxSetup({
         beforeSend: function(xhr, settings) {
-             function getCookie(name) {
-                 let cookieValue = null;
-
-                 if (document.cookie && document.cookie !== '') {
-                     let cookies = document.cookie.split(';');
-                     for (let i = 0; i < cookies.length; i++) {
-                         let cookie = jQuery.trim(cookies[i]);
-
-                         if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                             cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                             break;
-                         }
-                     }
-                 }
-                 return cookieValue;
-             }
              if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
                  xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
              }
@@ -101,6 +108,8 @@
 
         const chatInput = document.getElementById("chat-input");
         const messageInput = document.getElementById("message-input");
+        const fileInput = document.getElementById("file-input");
+        const fileForm = document.getElementById("file-form");
         const sendButton = document.getElementById("send-button");
         const newChatOverlay = document.getElementById("new-chat-overlay");
         const chatMessages = document.getElementById('chat-messages');
@@ -108,6 +117,7 @@
         const goBottomNotification = document.getElementById("go-bottom-notification");
         const emojiPickerButton = document.getElementById("emoji-picker-button");
         const emojiPicker = document.querySelector("emoji-picker");
+        const attachmentButton = document.getElementById("attachment-button");
         const chatHeader = document.getElementById('chat-header');
         const chatHeaderUsername = document.getElementById('chat-header-username');
         const chatHeaderOnline = document.getElementById('online-icon')
@@ -116,7 +126,7 @@
         let isUserOnline = {};
         userSockets['{{ request.user.username }}'] = createUserSocket("{{ request.user.username }}")
         const userSocket = userSockets['{{ request.user.username }}']
-                let notification;
+        let notification;
         let allMessages = {};
         let ongoingMessages = [];
 
@@ -157,7 +167,7 @@
                 `ws://${window.location.host}/base/user/${username}/`
             );
 
-            userSocket.onopen = function(e) {
+            userSocket.onopen = function() {
                 isOnline(this);
             }
 
@@ -169,7 +179,7 @@
                     const username = JSON.parse(e["data"])["source_username"];
                     const newChat = document.querySelector(".chat[chat-id='undefined']");
 
-                    if (newChat.firstChild.textContent !==  username) {
+                    if (newChat == null || newChat.firstChild.textContent !==  username) {
                         const chatList = document.getElementById("chat-list");
                         const chatElement = getChatElement(chat_id, username)
                         chatElement.removeAttribute("new");
@@ -180,7 +190,7 @@
                         if (noChatsBanner) {
                             noChatsBanner.remove();
                         }
-                    } else {
+                    } else if (newChat.firstChild.textContent ===  username) {
                         newChat.setAttribute("chat-id", chat_id);
                         newChat.removeAttribute("new");
 
@@ -234,18 +244,19 @@
             chatSocket.onmessage = function(e) {
                 const data = JSON.parse(e["data"]);
                 const activeChat = document.querySelector('.chat-list li.active');
-                const chat_notification = document.querySelector('.chat-notification[chat-id="' + data.chat_id + '"]');
+                const chat_notification = document.querySelector('.chat-notification[chat-id="' + data["chat_id"] + '"]');
 
                 if(data.type === 'chat_message') {
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
                     allMessages[data["chat_id"]].push(data);
 
                     //if the incoming message's chat is open, show the message
-                    if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data.chat_id)) {
+                    if(activeChat != null && parseInt(activeChat.getAttribute("chat-id")) === parseInt(data["chat_id"])) {
                         //if this message is the first message of the day, create a "Today" indicator.
                         const todayIndicator = document.querySelector(".messageDate[today='true']");
                         if (todayIndicator == null) {
                             const date = new Date('{% now "l, F j, Y g:i A" %}');
+                            console.log(date);
                             const dateElement = getDateElement(date);
 
                             chatMessages.appendChild(dateElement);
@@ -253,11 +264,11 @@
 
                         //when user responds someone, remove the "Unread Messages" indicator.
                         const unreadMessagesIndicator = document.getElementById("unread-messages");
-                        if(unreadMessagesIndicator != null && data.source_id === {{ request.user.id }}) {
+                        if(unreadMessagesIndicator != null && data["source_id"] === {{ request.user.id }}) {
                             unreadMessagesIndicator.remove();
                         }
 
-                        chatMessages.appendChild(getMessageElement(data));
+                        chatMessages.appendChild(getMessageElement(data, 0));
 
                         if (viewingOlderMessages && data["source_id"] !== {{ request.user.id }}) {
                             goBottomNotification.textContent = parseInt(goBottomNotification.textContent) + 1 + "";
@@ -374,6 +385,19 @@
                 }, 5)
         }
 
+        function waitForXhrResponse(xhr, callback) {
+            setTimeout(
+                function() {
+                    if(xhr.readyState === 4) {
+                        if(callback !== undefined) {
+                            callback();
+                        }
+                    } else {
+                        waitForSocketConnection(xhr, callback);
+                    }
+                }, 5)
+        }
+
         function getDateElement(date) {
             const now = new Date();
             const weekBefore = new Date();
@@ -397,13 +421,13 @@
 
                 dateElement.textContent = dayOfTheWeek;
             } else {
-                dateElement.textContent = date.toLocaleString('us-EN').substring(0,11);
+                dateElement.textContent = date.toLocaleString().substring(0,11);
             }
 
             return dateElement;
         }
 
-        function getMessageElement(message) {
+        function getMessageElement(message, paging) {
             const messageElement = document.createElement('div');
             const messageText = document.createElement('p');
             const messageTime = document.createElement('span');
@@ -414,7 +438,32 @@
             messageElement.setAttribute('hasSent', message["hasSent"]);
 
             messageText.classList.add('messageText');
-            messageText.textContent = message.message;
+
+            if (message.message.length > 1200) {
+                messageText.textContent = message.message.substring(0, (paging + 1) * 1200);
+                if (message.message.length > (paging + 1) * 1200) {
+                    let readMore = document.createElement('p');
+                    readMore.classList.add("read-more");
+                    readMore.textContent = "Read more";
+                    readMore.setAttribute("message-id", message.message_id);
+                    messageText.appendChild(readMore);
+
+                    readMore.addEventListener('click', function() {
+                        let messageElement = document.querySelector(`.message[message-id="${message.message_id}"]`);
+                        let oldChild = messageElement.firstChild;
+                        let scrollHeight = chatMessages.scrollTop;
+                        messageElement.insertBefore(getMessageElement(message, paging + 1).firstChild, oldChild);
+                        messageElement.removeChild(oldChild);
+                        chatMessages.scrollTop = scrollHeight;
+                        if (goBottomButton.style.display === "none") {
+                            goBottomButton.style.display = "block";
+                        }
+                    })
+                }
+            } else {
+                messageText.textContent = message.message;
+            }
+
 
             messageTime.classList.add('messageTime');
 
@@ -489,7 +538,7 @@
                             chatMessages.appendChild(unreadElement);
                         }
 
-                        messageElement = getMessageElement(messages[i]);
+                        messageElement = getMessageElement(messages[i], 0);
                         chatMessages.appendChild(messageElement);
                     }
 
@@ -564,6 +613,7 @@
 
                     if(emojiPicker.style.display !== "none") {
                         emojiPicker.style.display = "none";
+                        emojiPickerButton.classList.remove("active");
                     }
 
                     clearChat();
@@ -698,9 +748,10 @@
             }
         });
 
-        document.getElementById('message-input').addEventListener('click', function(event) {
+        document.getElementById('message-input').addEventListener('click', function() {
             if(emojiPicker.style.display !== "none") {
                 emojiPicker.style.display = "none";
+                emojiPickerButton.classList.remove("active");
             }
         })
 
@@ -732,6 +783,7 @@
             messageInput.removeAttribute("disabled");
             sendButton.removeAttribute("disabled");
             emojiPickerButton.removeAttribute("disabled");
+            attachmentButton.removeAttribute("disabled");
         }
 
         function disableMessageInput() {
@@ -740,6 +792,7 @@
             messageInput.setAttribute("disabled", "true");
             sendButton.setAttribute("disabled", "true");
             emojiPickerButton.setAttribute("disabled", "true");
+            attachmentButton.setAttribute("disabled", "true");
         }
 
         document.getElementById('search-user-button').addEventListener('click', function() {
@@ -841,7 +894,7 @@
             }
         });
 
-        document.getElementById('new-chat-button').addEventListener('click', function(event) {
+        document.getElementById('new-chat-button').addEventListener('click', function() {
             if (newChatOverlay.style.display === "none") {
                 newChatOverlay.style.display = "block";
                 this.classList.add("active");
@@ -853,25 +906,52 @@
             }
         })
 
-        document.getElementById('logout-button').addEventListener('click', function(event) {
+        document.getElementById('logout-button').addEventListener('click', function() {
             let form = document.getElementById('logout-form');
             form.submit();
         })
 
-        goBottomButton.addEventListener('click', function(event) {
+        goBottomButton.addEventListener('click', function() {
             chatMessages.scrollTo(0, chatMessages.scrollHeight);
 
             goBottomButton.style.display = "none";
         })
 
-        emojiPickerButton.addEventListener('click', function(event) {
+        emojiPickerButton.addEventListener('click', function() {
             if (!emojiPickerButton.hasAttribute("disabled")) {
                 if (emojiPicker.style.display === "none") {
+                    emojiPickerButton.classList.add("active");
                     emojiPicker.style.display = "block";
                 } else {
+                    emojiPickerButton.classList.remove("active");
                     emojiPicker.style.display = "none";
+                    messageInput.focus();
                 }
             }
+        })
+
+        attachmentButton.addEventListener('click', function(){
+            fileInput.click();
+        })
+
+        fileInput.addEventListener('change', function(event){
+
+            event.preventDefault();
+
+            const activeChat = document.querySelector('.chat-list li.active');
+            let activeChatId = activeChat.getAttribute('chat-id');
+            const file = fileInput.files[0];
+            let xhr = new XMLHttpRequest();
+
+            xhr.open("POST", '{% url 'base:upload' %}', true);
+            xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+            xhr.setRequestHeader("chat", activeChatId);
+            xhr.setRequestHeader("name", file.name);
+            xhr.send(file);
+
+            waitForXhrResponse(xhr, function() {
+                console.log(xhr.responseText);
+            });
         })
 
         emojiPicker.addEventListener('emoji-click', event => messageInput.value = messageInput.value + event["detail"]["unicode"]);

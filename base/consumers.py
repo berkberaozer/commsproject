@@ -1,6 +1,5 @@
-from asgiref.sync import async_to_sync
 from channels.db import database_sync_to_async
-from channels.generic.websocket import WebsocketConsumer, AsyncWebsocketConsumer
+from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -31,7 +30,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message_type = data["type"]
 
         if message_type == "chat_message":
-            message = await self.create_message(data["source_id"], data["message"], self.chat_id)
+            message = await self.create_message(data["source_id"], data["message"])
 
             await self.channel_layer.group_send(self.chat_id, {"type": "chat_message", "source_id": message.source_id,
                                                                "message": message.message,
@@ -60,11 +59,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps(event))
 
     @database_sync_to_async
-    def create_message(self, source_id, message, chat_id):
+    def create_message(self, source_id, message):
         date = timezone.now()
         message = Message.objects.create(source=get_user_model().objects.get(id=source_id),
                                          message=message, date=date, chat=Chat.objects.get(id=self.chat_id))
-        message.save()
 
         return message
 

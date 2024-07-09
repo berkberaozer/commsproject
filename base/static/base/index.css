@@ -361,7 +361,7 @@ body {
     background: #383838;
 }
 
-#go-bottom-notification {
+.go-bottom-notification {
     position: absolute;
     left: 15px;
     bottom: 33px;
@@ -377,7 +377,7 @@ body {
     display: none;
 }
 
-#emoji-picker-button {
+.emoji-picker-button {
     padding: 0.3vw;
     margin-right: 5px;
     border-radius: 8px;
@@ -386,7 +386,7 @@ body {
     align-content: center;
 }
 
-#emoji-picker-button:not([disabled]) {
+.emoji-picker-button:not([disabled]) {
     cursor: pointer;
 }
 
@@ -395,6 +395,10 @@ body {
 }
 
 #emoji-icon {
+    width: 25px;
+}
+
+#attachment-icon {
     width: 25px;
 }
 
@@ -422,4 +426,10 @@ emoji-picker {
     justify-self: center;
     padding: 0;
     display: block;
+}
+
+.read-more {
+    color: dodgerblue;
+    margin: 0px;
+    cursor: pointer;
 }

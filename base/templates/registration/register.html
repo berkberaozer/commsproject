@@ -6,11 +6,15 @@
 </head>
 <body>
 <div class="container">
-    <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Register</button>
-    </form>
+    {% if register == True %}
+        <p style="color: green">Registration is successful.</p>
+    {% else %}
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Register</button>
+        </form>
+    {% endif %}
     <form action="../../auth/login">
         <button type="submit">Get Back</button>
     </form>

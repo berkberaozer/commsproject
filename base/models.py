@@ -14,7 +14,6 @@ class User(AbstractUser):
 
 
 class Chat(models.Model):
-    id = models.AutoField(primary_key=True)
     belong = models.ForeignKey(User, on_delete=models.CASCADE, related_name='opened_chats')
     target = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_chats')
 
@@ -28,7 +27,6 @@ class Chat(models.Model):
 
 
 class Message(models.Model):
-    id = models.AutoField(primary_key=True)
     source = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_messages")
     message = models.TextField()
     date = models.DateTimeField()
@@ -36,6 +34,7 @@ class Message(models.Model):
     hasReached = models.BooleanField(default=False)
     hasRead = models.BooleanField(default=False)
     hasSent = models.BooleanField(default=True)
+    isFile = models.TextField(default=False)
 
     class Meta:
         ordering = ["date"]
