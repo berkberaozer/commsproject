@@ -36,9 +36,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                                                "message": message.message,
                                                                "date": message.date.__str__(),
                                                                "message_id": message.id,
-                                                               "hasReached": message.hasReached,
-                                                               "hasRead": message.hasRead, "chat_id":
-                                                                   message.chat_id, "hasSent": message.hasSent}
+                                                               "has_reached": message.has_reached,
+                                                               "has_read": message.has_read, "chat_id":
+                                                                   message.chat_id, "has_sent": message.has_sent}
+                                                )
+        elif message_type == "chat_file":
+            message = await self.create_file_message(data["source_id"], data["message"], data["file_name"])
+
+            await self.channel_layer.group_send(self.chat_id, {"type": "chat_file", "source_id": message.source_id,
+                                                               "message": message.message,
+                                                               "date": message.date.__str__(),
+                                                               "message_id": message.id,
+                                                               "has_reached": message.has_reached,
+                                                               "has_read": message.has_read, "chat_id":
+                                                                   message.chat_id, "has_sent": message.has_sent,
+                                                               "file_name": message.file_name}
                                                 )
         elif message_type == "message_reached":
             await self.update_reached(data["message_id"], True)
@@ -50,6 +62,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"]})
 
     async def chat_message(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def chat_file(self, event):
         await self.send(text_data=json.dumps(event))
 
     async def message_read(self, event):
@@ -67,9 +82,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return message
 
     @database_sync_to_async
+    def create_file_message(self, source_id, message, file_name):
+        date = timezone.now()
+        message = Message.objects.create(source=get_user_model().objects.get(id=source_id),
+                                         message=message, date=date, chat=Chat.objects.get(id=self.chat_id), file_name=file_name)
+
+        return message
+
+    @database_sync_to_async
     def update_read(self, message_id, boolean):
         msg = Message.objects.get(id=message_id)
-        msg.hasRead = boolean
+        msg.has_read = boolean
         msg.save()
 
         return msg
@@ -77,7 +100,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def update_reached(self, message_id, boolean):
         msg = Message.objects.get(id=message_id)
-        msg.hasReached = boolean
+        msg.has_reached = boolean
         msg.save()
 
         return msg

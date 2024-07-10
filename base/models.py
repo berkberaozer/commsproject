@@ -31,10 +31,10 @@ class Message(models.Model):
     message = models.TextField()
     date = models.DateTimeField()
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
-    hasReached = models.BooleanField(default=False)
-    hasRead = models.BooleanField(default=False)
-    hasSent = models.BooleanField(default=True)
-    isFile = models.TextField(default=False)
+    has_reached = models.BooleanField(default=False)
+    has_read = models.BooleanField(default=False)
+    has_sent = models.BooleanField(default=True)
+    file_name = models.TextField(default=False)
 
     class Meta:
         ordering = ["date"]

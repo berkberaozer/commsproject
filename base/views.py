@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.shortcuts import render
-from django.http import HttpResponseRedirect, JsonResponse, HttpResponse
+from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.views import View
@@ -8,17 +8,16 @@ from django.contrib.auth import authenticate, login, get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
 from django.core.files.storage import default_storage
-
-from .forms import RegistrationForm
 from django.db.models import Q
-from django.core.files.storage import FileSystemStorage
-import base64
-from django.core.files.base import ContentFile, File
-import io
-from mimetypes import guess_extension
-from django.core import serializers
+from django.core.files.base import File
 
-from .models import Chat, Message
+import io
+
+from commsproject.settings import DATA_UPLOAD_MAX_MEMORY_SIZE
+from .forms import RegistrationForm
+from mimetypes import guess_extension
+
+from .models import Chat
 
 
 # Create your views here.
@@ -66,7 +65,7 @@ class IndexView(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         chats = Chat.objects.filter(Q(belong=self.request.user) | Q(target=self.request.user))
 
-        return render(context={'chats': chats}, request=self.request, template_name="base/index.html")
+        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE}, request=self.request, template_name="base/index.html")
 
 
 class SearchUser(LoginRequiredMixin, View):  # case-insensitive user search, request user is excluded
@@ -99,13 +98,8 @@ class UploadFile(LoginRequiredMixin, View):
     @transaction.atomic
     def post(self, request, *args, **kwargs):
         date = timezone.now()
-        file = File(io.BytesIO(request.body),
-                    name=request.user.username + "-" + str(date.timestamp()) + guess_extension(self.request.content_type))
+        file = File(io.BytesIO(request.body),name=request.user.username + "-" + str(date.timestamp()) + guess_extension(self.request.content_type))
         file_name = default_storage.save(file.name, file)
         file_url = default_storage.url(file_name)
 
-        message = Message.objects.create(source=get_user_model().objects.get(id=request.user.id),
-                                         message=file_url, date=date, chat=Chat.objects.get(id=self.request.headers.get("chat")),
-                                         isFile=self.request.headers.get("name"))
-
-        return JsonResponse({"success": True, "message": serializers.serialize("json", Message.objects.filter(pk=message.pk))})
+        return JsonResponse({"message": file_url, "fileName": self.request.headers.get("name")})

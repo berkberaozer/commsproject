@@ -140,7 +140,7 @@
 
             {% for message in chat.messages.all %}
                 {% if message.source_id != request.user.id %}
-                {% if message.hasRead == False %}
+                {% if message.has_read == False %}
                     notification = document.querySelector(".chat-notification[chat-id='{{ message.chat_id }}']");
                     if (notification.style.display === "none") {
                         notification.style.display = "";
@@ -148,7 +148,7 @@
                     notification.textContent = parseInt(notification.textContent) + 1 + "";
                 {% endif %}
 
-                {% if message.hasReached == False %}
+                {% if message.has_reached == False %}
                     sendMessage(chatSockets[{{ message.chat_id }}], type="message_reached", id= {{ message.id }});
                 {% endif %}
             {% endif %}
@@ -157,7 +157,7 @@
                  allMessages[{{ message.chat_id }}] = [];
             }
 
-            allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source_id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'hasReached': {{ message.hasReached|yesno:"true,false" }}, 'hasRead': {{ message.hasRead|yesno:"true,false" }}, 'hasSent': {{ message.hasSent|yesno:"true,false" }}});
+            allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_id': {{ message.source_id }}, 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_reached': {{ message.has_reached|yesno:"true,false" }}, 'has_read': {{ message.has_read|yesno:"true,false" }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
 
             {% endfor %}
         {% endfor %}
@@ -223,7 +223,7 @@
                         } else {
                             chatHeaderOnline.style.display = "none";
                         }
-                    }
+                        }
                     }
                 }
             }
@@ -246,7 +246,7 @@
                 const activeChat = document.querySelector('.chat-list li.active');
                 const chat_notification = document.querySelector('.chat-notification[chat-id="' + data["chat_id"] + '"]');
 
-                if(data.type === 'chat_message') {
+                if(data.type === 'chat_message' || data.type === 'chat_file') {
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
                     allMessages[data["chat_id"]].push(data);
 
@@ -255,7 +255,7 @@
                         //if this message is the first message of the day, create a "Today" indicator.
                         const todayIndicator = document.querySelector(".messageDate[today='true']");
                         if (todayIndicator == null) {
-                            const date = new Date('{% now "l, F j, Y g:i A" %}');
+                            const date = new Date();
                             console.log(date);
                             const dateElement = getDateElement(date);
 
@@ -296,6 +296,11 @@
                         }
                         chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
                     }
+
+                    //if this user is the receiving end, notify the sender that message is reached
+                    if(data["source_id"] !== {{ request.user.id }}) {
+                        sendMessage(this, "message_reached", data.message_id);
+                    }
                 } else if (data.type === "message_reached" && activeChat != null) {
                     const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
                     reachedMessage(chat_id, data.message_id);
@@ -313,11 +318,6 @@
                         message.classList.add("blue");
                     }
                 }
-
-                //if this user is the receiving end, notify the sender that message is reached
-                if(data["source_id"] !== {{ request.user.id }} && data.type === "chat_message") {
-                    sendMessage(this, "message_reached", data.message_id);
-                }
             };
 
             chatSocket.onclose = function(e) {
@@ -327,7 +327,7 @@
             chatSockets[chat_id] = chatSocket;
         }
 
-        function sendMessage(socket, type, id, message) {
+        function sendMessage(socket, type, id, message, fileName) {
             waitForSocketConnection(socket, function() {
                 if(type === 'chat_message') {
                     socket.send(JSON.stringify({
@@ -335,6 +335,13 @@
                     'source_id': id,
                     'type': type,
                 }));
+                } else if (type === 'chat_file') {
+                    socket.send(JSON.stringify({
+                        'message': message,
+                        'source_id': id,
+                        'type': type,
+                        'file_name': fileName,
+                    }))
                 } else {
                     socket.send(JSON.stringify({
                         'message_id': id,
@@ -385,19 +392,6 @@
                 }, 5)
         }
 
-        function waitForXhrResponse(xhr, callback) {
-            setTimeout(
-                function() {
-                    if(xhr.readyState === 4) {
-                        if(callback !== undefined) {
-                            callback();
-                        }
-                    } else {
-                        waitForSocketConnection(xhr, callback);
-                    }
-                }, 5)
-        }
-
         function getDateElement(date) {
             const now = new Date();
             const weekBefore = new Date();
@@ -433,13 +427,37 @@
             const messageTime = document.createElement('span');
 
             messageElement.classList.add('message', message["source_id"] === {{ request.user.id }} ? 'sent' : 'received');
-            messageElement.setAttribute('hasRead', message["hasRead"]);
-            messageElement.setAttribute('hasReached', message["hasReached"]);
-            messageElement.setAttribute('hasSent', message["hasSent"]);
+            messageElement.setAttribute('has_read', message["has_read"]);
+            messageElement.setAttribute('has_reached', message["has_reached"]);
+            messageElement.setAttribute('has_sent', message["has_sent"]);
 
             messageText.classList.add('messageText');
 
-            if (message.message.length > 1200) {
+            if (message.file_name !== "false") {
+                let re = /(?:\.([^.]+))?$/;
+                extension = re.exec(message.message)[1];
+
+                switch (extension) {
+                  case 'png':
+                  case 'gif':
+                  case 'jpg':
+                  case 'jpeg':
+                  case 'tif':
+                  case 'bmp':
+                  case 'tiff':
+                      content = document.createElement("img");
+                      content.src = message.message;
+                      messageElement.classList.add("image");
+                      break;
+                    default:
+                        content = document.createElement("a");
+                        content.href = message.message;
+                        content.textContent = message.file_name;
+                        content.download = message.file_name;
+                }
+                messageText.appendChild(content);
+            }
+            else if (message.message.length > 1200) {
                 messageText.textContent = message.message.substring(0, (paging + 1) * 1200);
                 if (message.message.length > (paging + 1) * 1200) {
                     let readMore = document.createElement('p');
@@ -483,13 +501,13 @@
                 messageStatus.classList.add("message-status");
                 messageStatus.textContent = " ";
 
-                if (message["hasSent"] === true) {
+                if (message["has_sent"] === true) {
                     messageStatus.textContent += "✓";
                 }
-                if (message["hasReached"] === true) {
+                if (message["has_reached"] === true) {
                     messageStatus.textContent += "✓";
                 }
-                if (message["hasRead"] === true) {
+                if (message["has_read"] === true) {
                     messageStatus.classList.add("blue");
                 }
                 messageTime.appendChild(messageStatus);
@@ -528,7 +546,7 @@
                         }
                         currentDateIndicator = date;
 
-                        if(messages[i]["source_id"] !== {{ request.user.id }} && messages[i].hasRead === false && !unread) {
+                        if(messages[i]["source_id"] !== {{ request.user.id }} && messages[i].has_read === false && !unread) {
                             unread = true;
 
                             const unreadElement = document.createElement("div");
@@ -542,7 +560,7 @@
                         chatMessages.appendChild(messageElement);
                     }
 
-                    const firstUnread = document.querySelector('.message.received[hasread="false"]');
+                    const firstUnread = document.querySelector('.message.received[has_read="false"]');
 
                     if(firstUnread != null) {
                         chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight / 2, behavior: "instant"});
@@ -582,7 +600,7 @@
             message_id = parseInt(message_id);
             for (let i = 0; i < allMessages[chat_id].length; i++) {
                 if (allMessages[chat_id][i]["message_id"] === message_id) {
-                    allMessages[chat_id][i].hasRead = true;
+                    allMessages[chat_id][i].has_read = true;
                     break;
                 }
             }
@@ -592,7 +610,7 @@
             message_id = parseInt(message_id);
             for (let i = 0; i < allMessages[chat_id].length; i++) {
                 if (allMessages[chat_id][i]["message_id"] === message_id) {
-                    allMessages[chat_id][i].hasReached = true;
+                    allMessages[chat_id][i].has_reached = true;
                     break;
                 }
             }
@@ -653,7 +671,7 @@
         })
 
         document.getElementById('chat-messages').addEventListener('scroll', function(event) {
-            const messages = document.querySelectorAll(".message.received[hasread='false']");
+            const messages = document.querySelectorAll(".message.received[has_read='false']");
             const notification = document.querySelector(".chat.active .chat-notification");
             const activeChat = document.querySelector('.chat-list li.active');
 
@@ -662,7 +680,7 @@
 
                 messages.forEach(message => {
                     if (message.offsetTop - event.target.offsetTop < event.target.scrollTop + event.target.clientHeight - message.scrollHeight) {
-                        message.setAttribute("hasread", 'true');
+                        message.setAttribute("has_read", 'true');
                         notification.textContent = parseInt(notification.textContent) - 1 + "";
 
                         if (goBottomNotification.textContent > 0) {
@@ -935,23 +953,28 @@
         })
 
         fileInput.addEventListener('change', function(event){
-
-            event.preventDefault();
-
             const activeChat = document.querySelector('.chat-list li.active');
             let activeChatId = activeChat.getAttribute('chat-id');
             const file = fileInput.files[0];
-            let xhr = new XMLHttpRequest();
 
-            xhr.open("POST", '{% url 'base:upload' %}', true);
-            xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
-            xhr.setRequestHeader("chat", activeChatId);
-            xhr.setRequestHeader("name", file.name);
-            xhr.send(file);
+            if (file.size <= {{ DATA_UPLOAD_MAX_MEMORY_SIZE }}) {
+                let xhr = new XMLHttpRequest();
 
-            waitForXhrResponse(xhr, function() {
-                console.log(xhr.responseText);
-            });
+                xhr.open("POST", '{% url 'base:upload' %}', true);
+                xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+                xhr.setRequestHeader("chat", activeChatId);
+                xhr.setRequestHeader("name", file.name);
+                xhr.send(file);
+
+                xhr.onreadystatechange = function () {
+                    if(xhr.readyState === 4) {
+                        message = JSON.parse(xhr.responseText)
+                        sendMessage(chatSockets[activeChatId], "chat_file", {{ request.user.id }}, message["message"], message["fileName"]);
+                    }
+                }
+            } else {
+                alert("File size should be less than 20 MBs.");
+            }
         })
 
         emojiPicker.addEventListener('emoji-click', event => messageInput.value = messageInput.value + event["detail"]["unicode"]);
