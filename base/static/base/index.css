@@ -51,27 +51,31 @@ body {
 }
 
 .chat-list-header {
-    margin: 5px;
+    margin: 0 5px;
     border-bottom: 2px solid #515151;
 }
 
-.new-chat-button {
+.chat-list-header h2 {
+    margin-top: 25px;
+}
+
+.chat-list-header-button {
     cursor: pointer;
     float: right;
-    padding: 3px;
+    padding: 5px;
     margin: 15px 5px 5px;
     border-radius: 8px;
 }
 
-.new-chat-button:hover {
+.chat-list-header-button:hover {
     background: #383838;
 }
 
-.new-chat-button.active:hover {
+.chat-list-header-button.active:hover {
     background: #515151;
 }
 
-#new-chat-icon {
+.chat-list-header-icon {
     width: 30px;
 }
 
@@ -81,7 +85,7 @@ body {
     padding: 0;
 }
 
-.chat-list li {
+.chat {
     padding: 15px;
     border-bottom: 1px solid #515151;
     cursor: pointer;
@@ -89,7 +93,7 @@ body {
     border-radius: 8px;
 }
 
-.chat-list li:hover {
+.chat:hover {
     background: #383838;
 }
 .active {
@@ -97,7 +101,7 @@ body {
     background: #454545;
 }
 
-.chat-list li.active:hover {
+.chat.active:hover {
     background: #515151;
 }
 
@@ -202,7 +206,7 @@ body {
 }
 
 .message.received {
-    background: lightgray;
+    background: #f2f2f2;
 }
 
 .messageDate {
@@ -238,7 +242,7 @@ body {
     background: #383838;
 }
 
-.chat-input button {
+.send-button {
     margin-left: 10px;
     padding: 10px 15px;
     background: #383838;
@@ -247,11 +251,11 @@ body {
     border: 1px solid black;
 }
 
-.chat-input button:enabled {
+.send-button:enabled {
     cursor: pointer;
 }
 
-.chat-input button:hover:enabled {
+.send-button:hover:enabled {
     background: #515151;
     border: 1px solid white;
     color: #dcf8c6;
@@ -398,6 +402,10 @@ body {
     background: #383838;
 }
 
+.emoji-picker-button:not([disabled]).active:hover {
+    background: #515151;
+}
+
 #emoji-icon {
     width: 25px;
 }
@@ -441,6 +449,7 @@ emoji-picker {
 .messageText img{
     max-width: 100%;
     max-height: 70vh;
+    border-radius: 8px;
 }
 
 .messageText:has(img){

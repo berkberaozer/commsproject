@@ -63,7 +63,7 @@ class IndexView(LoginRequiredMixin, View):
 
     @transaction.atomic
     def get(self, request, *args, **kwargs):
-        chats = Chat.objects.filter(Q(belong=self.request.user) | Q(target=self.request.user))
+        chats = Chat.objects.filter(users=self.request.user)
 
         return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE}, request=self.request, template_name="base/index.html")
 
@@ -85,12 +85,14 @@ class CreateChat(LoginRequiredMixin, View):
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
-        if request.POST.get('target'):
-            target = get_user_model().objects.get(username=request.POST.get('target'))
-            chat = Chat.objects.create(belong=self.request.user, target=target)
-
+        if request.POST.getlist('users[]'):
+            chat = Chat.objects.create()
+            for user in request.POST.getlist('users[]'):
+                chat.users.add(get_user_model().objects.get(username=user))
+            chat.users.add(request.user)
             return JsonResponse({"chat_id": chat.id, "success": True})
         else:
+            print(request.POST.get('users'))
             return JsonResponse({"success": False})
 
 

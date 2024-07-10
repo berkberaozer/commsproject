@@ -19,8 +19,28 @@
         <button class="search-user-button" id="search-user-button" type="submit" hidden="hidden">Search</button>
 
         <div class="users">
-            <ul id="users-list"></ul>
+            <ul id="users-list" class="chat-list"></ul>
             <span style="visibility: hidden">No Users!</span>
+        </div>
+    </div>
+
+    <div class="new-chat-overlay" id="new-group-overlay" style="display: none">
+        <h2 style="margin: 10px 0">New group</h2>
+        <input class="search-user-input" id="new-group-search-user-input" type="search" placeholder="Search" aria-label="Search" name="search" >
+        <button class="search-user-button" id="new-group-search-user-button" type="submit" hidden="hidden">Search</button>
+
+        <div class="group-users">
+            <ul id="group-users-list" class="chat-list" style="border-bottom-color: white"></ul>
+            <span style="visibility: hidden">No Users!</span>
+        </div>
+        <div style="width: 100%; height: 2px; background-color: white"></div>
+        <div class="selected-users">
+            <ul id="selected-users-list"></ul>
+            <span style="visibility: hidden">No Users!</span>
+        </div>
+        <div style="display: flex; gap: 3px; position: absolute; bottom: 10px; left: 2.5%; width: 95%;">
+            <input class="search-user-input" id="group-name-input" style="margin: 0" type="text" placeholder="Group name" aria-label="Group name" name="name" >
+            <button class="send-button" id="create-group-button" type="submit">Create</button>
         </div>
     </div>
 
@@ -28,15 +48,24 @@
         <div class="chat-list-container">
             <div class="chat-list-header">
                 <h2 style="float: left; margin-left: 5px">Chats</h2>
-                <div class="new-chat-button" id="new-chat-button"><img src="{% static 'base/new_chat.png' %}" id="new-chat-icon" alt="Create new chat"></div>
+
+                <div class="chat-list-header-button" id="new-chat-button"><img src="{% static 'base/new_chat.png' %}" class="chat-list-header-icon" id="new-chat-icon" alt="Create new chat"></div>
+                <div class="chat-list-header-button" id="new-group-button"><img src="{% static 'base/new-group.png' %}" class="chat-list-header-icon" id="new-group-icon" alt="Create new group"></div>
             </div>
 
             <ul class="chat-list" id="chat-list">
                 {% if chats.count > 0 %}
                         {% for chat in chats %}
                                 <li chat-id="{{ chat.id }}" class="chat" style="text-wrap: wrap">
-                                    <span>{% if chat.target.username == request.user.username %}
-                                        {{chat.belong}}{% else %}{{chat.target}}{% endif %}</span>
+                                    <span>
+                                        {% if chat.name == None %}
+                                            {% for user in chat.users.all %}
+                                                {% if user.username != request.user.username %}
+                                                    {{ user.username }}
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endif %}
+                                    </span>
                                     <span chat-id="{{ chat.id }}" class="chat-notification" style="display: none">0</span>
                                 </li>
                         {% endfor %}
@@ -73,7 +102,7 @@
 
                 <label for="message-input"></label>
                 <input type="text" id="message-input" placeholder="Type your message here..." disabled>
-                <button id="send-button" disabled>Send</button>
+                <button class="send-button" id="send-button" disabled>Send</button>
             </div>
         </div>
     </div>
@@ -111,7 +140,10 @@
         const fileInput = document.getElementById("file-input");
         const fileForm = document.getElementById("file-form");
         const sendButton = document.getElementById("send-button");
+        const newChatButton = document.getElementById("new-chat-button");
         const newChatOverlay = document.getElementById("new-chat-overlay");
+        const newGroupButton = document.getElementById("new-group-button");
+        const newGroupOverlay = document.getElementById("new-group-overlay");
         const chatMessages = document.getElementById('chat-messages');
         const goBottomButton = document.getElementById("go-bottom-button");
         const goBottomNotification = document.getElementById("go-bottom-notification");
@@ -120,7 +152,8 @@
         const attachmentButton = document.getElementById("attachment-button");
         const chatHeader = document.getElementById('chat-header');
         const chatHeaderUsername = document.getElementById('chat-header-username');
-        const chatHeaderOnline = document.getElementById('online-icon')
+        const chatHeaderOnline = document.getElementById('online-icon');
+        const createGroupButton = document.getElementById("create-group-button");
         const chatSockets = {};
         let userSockets = {}
         let isUserOnline = {};
@@ -132,11 +165,11 @@
 
         {% for chat in chats %}
             createChatSocket({{chat.id}});
-            {% if chat.target.username == request.user.username and chat.belong.username != request.user.username %}
-                userSockets['{{chat.belong.username}}'] = createUserSocket('{{ chat.belong.username }}')
-            {% elif chat.target.username != request.user.username %}
-                userSockets['{{chat.target.username}}'] = createUserSocket('{{ chat.target.username }}')
-            {% endif %}
+            {% for user in chat.users.all %}
+                {% if user.username != request.user.username %}
+                    userSockets['{{user.username}}'] = createUserSocket('{{user.username}}')
+                {% endif %}
+            {% endfor %}
 
             {% for message in chat.messages.all %}
                 {% if message.source_id != request.user.id %}
@@ -277,7 +310,7 @@
                             }
 
                             if (chat_notification.style.display === "none") {
-                                chat_notification.style.display = ""
+                                chat_notification.style.display = "";
                                 chat_notification.textContent = "0";
                             }
                             chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
@@ -291,7 +324,7 @@
                         }
                     } else { //if incoming message's chat is not open, just increase the notification
                         if (chat_notification.style.display === "none") {
-                            chat_notification.style.display = ""
+                            chat_notification.style.display = "";
                             chat_notification.textContent = "0";
                         }
                         chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
@@ -432,8 +465,8 @@
             messageElement.setAttribute('has_sent', message["has_sent"]);
 
             messageText.classList.add('messageText');
-
-            if (message.file_name !== "false") {
+            console.log(message.file_name);
+            if (message.file_name !== "False") {
                 let re = /(?:\.([^.]+))?$/;
                 extension = re.exec(message.message)[1];
 
@@ -721,11 +754,13 @@
 
             if (messageText !== '') {
                 if(activeChat.hasAttribute("new")) { //Creating the chat in the database when the creator sending a message
+                    let users = []
+                    users.push(activeChat.firstChild.textContent.trim());
                     $.ajax({
                     type: "POST",
                     url: "{% url 'base:create_chat' %}",
                     data: {
-                        "target": activeChat.firstChild.textContent.trim(),
+                        "users": users,
                     },
                     dataType: "json",
                     success: function (data) {
@@ -838,7 +873,7 @@
 
                             for(let i=0; i<users.length; i++) {
                                 const userElement = document.createElement('li');
-                                userElement.classList.add('user');
+                                userElement.classList.add('chat');
                                 userList.appendChild(userElement);
 
                                 const userName = document.createElement('a');
@@ -904,6 +939,71 @@
             }
         });
 
+        document.getElementById('new-group-search-user-button').addEventListener('click', function() {
+            const input = document.getElementById('new-group-search-user-input');
+
+            if(input.value !== '') {
+                $.ajax({
+                    type: "GET",
+                    url: "{% url 'base:search_user' %}",
+                    data: {
+                        "username": input.value,
+                    },
+                    dataType: "json",
+                    success: function (data) {
+                        const users = data["users"];
+                        const userList = document.getElementById('group-users-list');
+                        const noUsersText = document.querySelector(".group-users > span");
+
+                        userList.innerHTML = '';
+
+                        if(users.length === 0){
+                            noUsersText.style.visibility = "visible";
+                        } else {
+                            noUsersText.style.visibility = "hidden";
+
+                            for(let i=0; i<users.length; i++) {
+                                const userElement = document.createElement('li');
+                                userElement.classList.add('chat');
+                                userList.appendChild(userElement);
+
+                                const userName = document.createElement('span');
+                                userName.textContent = users[i].username;
+                                userName.classList.add("username")
+                                userElement.appendChild(userName);
+                            }
+                        }
+
+                        const selectedUsers = document.getElementById("selected-users-list")
+                        document.querySelectorAll('.username').forEach(el => el.addEventListener('click', () => {
+                            const userElement = document.createElement("li");
+                            userElement.classList.add("user");
+
+                            selectedUsers.appendChild(userElement);
+                            const userName = document.createElement('a');
+                            userName.textContent = el.textContent;
+                            userName.classList.add("username")
+                            userName.href = "#";
+                            userElement.appendChild(userName);
+
+                            userElement.addEventListener('click', function() {
+                                userElement.remove();
+
+                                if(selectedUsers.childElementCount === 0) {
+                                    createGroupButton.setAttribute("disabled", "disabled");
+                                }
+                            })
+                            el.parentElement.remove();
+
+                            if(selectedUsers.childElementCount > 0) {
+                                createGroupButton.removeAttribute("disabled");
+                            }
+                        }));
+                    },
+                });
+            }
+        });
+
         //searching users with pressing enter
         document.getElementById('search-user-input').addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
@@ -912,14 +1012,37 @@
             }
         });
 
-        document.getElementById('new-chat-button').addEventListener('click', function() {
+        document.getElementById('new-group-search-user-input').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('new-group-search-user-button').click();
+            }
+        })
+
+        newChatButton.addEventListener('click', function() {
             if (newChatOverlay.style.display === "none") {
                 newChatOverlay.style.display = "block";
+                newGroupOverlay.style.display = "none";
+                newGroupButton.classList.remove("active");
                 this.classList.add("active");
                 let input = document.getElementById("search-user-input");
                 input.focus();
             } else {
                 newChatOverlay.style.display = "none";
+                this.classList.remove('active');
+            }
+        })
+
+        newGroupButton.addEventListener('click', function() {
+            if (newGroupOverlay.style.display === "none") {
+                newGroupOverlay.style.display = "block";
+                newChatOverlay.style.display = "none";
+                newChatButton.classList.remove("active");
+                this.classList.add("active");
+                let input = document.getElementById("new-group-search-user-input");
+                input.focus();
+            } else {
+                newGroupOverlay.style.display = "none";
                 this.classList.remove('active');
             }
         })

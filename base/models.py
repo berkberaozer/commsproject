@@ -14,16 +14,10 @@ class User(AbstractUser):
 
 
 class Chat(models.Model):
-    belong = models.ForeignKey(User, on_delete=models.CASCADE, related_name='opened_chats')
-    target = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_chats')
-
-    class Meta:
-        constraints = [
-            UniqueConstraint(fields=['belong', 'target'], name='unique_chat'),
-        ]
+    users = models.ManyToManyField(User, related_name='users')
 
     def __str__(self):
-        return self.belong.__str__() + "-" + self.target.__str__()
+        return ", ".join(str(user) for user in self.users.all())
 
 
 class Message(models.Model):
