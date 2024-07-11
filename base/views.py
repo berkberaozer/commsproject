@@ -87,9 +87,15 @@ class CreateChat(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         if request.POST.getlist('users[]'):
             chat = Chat.objects.create()
+
             for user in request.POST.getlist('users[]'):
                 chat.users.add(get_user_model().objects.get(username=user))
             chat.users.add(request.user)
+
+            if request.POST.get('name'):
+                chat.name = request.POST.get('name')
+            chat.save()
+
             return JsonResponse({"chat_id": chat.id, "success": True})
         else:
             print(request.POST.get('users'))

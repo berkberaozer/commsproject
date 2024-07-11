@@ -15,7 +15,7 @@ class User(AbstractUser):
 
 class Chat(models.Model):
     users = models.ManyToManyField(User, related_name='users')
-
+    name = models.CharField(max_length=120, null=True, blank=True)
     def __str__(self):
         return ", ".join(str(user) for user in self.users.all())
 

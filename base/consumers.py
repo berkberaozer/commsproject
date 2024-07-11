@@ -30,9 +30,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message_type = data["type"]
 
         if message_type == "chat_message":
-            message = await self.create_message(data["source_id"], data["message"])
+            message = await self.create_message(data["source_username"], data["message"])
 
-            await self.channel_layer.group_send(self.chat_id, {"type": "chat_message", "source_id": message.source_id,
+            await self.channel_layer.group_send(self.chat_id, {"type": "chat_message", "source_username": message.source.username,
                                                                "message": message.message,
                                                                "date": message.date.__str__(),
                                                                "message_id": message.id,
@@ -41,9 +41,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                                                    message.chat_id, "has_sent": message.has_sent}
                                                 )
         elif message_type == "chat_file":
-            message = await self.create_file_message(data["source_id"], data["message"], data["file_name"])
+            message = await self.create_file_message(data["source_username"], data["message"], data["file_name"])
 
-            await self.channel_layer.group_send(self.chat_id, {"type": "chat_file", "source_id": message.source_id,
+            await self.channel_layer.group_send(self.chat_id, {"type": "chat_file", "source_username": message.source_username,
                                                                "message": message.message,
                                                                "date": message.date.__str__(),
                                                                "message_id": message.id,
@@ -74,17 +74,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps(event))
 
     @database_sync_to_async
-    def create_message(self, source_id, message):
+    def create_message(self, source_username, message):
         date = timezone.now()
-        message = Message.objects.create(source=get_user_model().objects.get(id=source_id),
+        message = Message.objects.create(source=get_user_model().objects.get(username=source_username),
                                          message=message, date=date, chat=Chat.objects.get(id=self.chat_id))
 
         return message
 
     @database_sync_to_async
-    def create_file_message(self, source_id, message, file_name):
+    def create_file_message(self, source_username, message, file_name):
         date = timezone.now()
-        message = Message.objects.create(source=get_user_model().objects.get(id=source_id),
+        message = Message.objects.create(source=get_user_model().objects.get(username=source_username),
                                          message=message, date=date, chat=Chat.objects.get(id=self.chat_id), file_name=file_name)
 
         return message
@@ -150,6 +150,10 @@ class UserConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_send(
                 self.username, {"type": "is_online", "value": await self.get_online()}
             )
+        elif data["type"] == "group_creation":
+            await self.channel_layer.group_send(
+                self.username, {"type": "group_creation", "chat_id": data["chat_id"], "name": data["name"], "source_username": data["source_username"]}
+            )
 
     async def chat_creation(self, event):
         source_username = event["source_username"]
@@ -163,6 +167,10 @@ class UserConsumer(AsyncWebsocketConsumer):
     async def chat_creation_ack(self, event):
         await self.send(text_data=json.dumps(
             {"type": event["type"], "chat_id": event["chat_id"], "source_username": event["source_username"]}))
+
+    async def group_creation(self, event):
+        await self.send(text_data=json.dumps(
+            {"type": event["type"], "chat_id": event["chat_id"], "name": event["name"], "source_username": event["source_username"]}))
 
     async def is_online(self, event):
         await self.send(text_data=json.dumps({"type": event["type"], "value": event["value"]}))
