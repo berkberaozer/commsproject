@@ -34,4 +34,4 @@ class Message(models.Model):
         ordering = ["date"]
 
     def __str__(self):
-        return self.source.__str__() + ": " + self.message + " to " + self.chat.__str__()
+        return self.source.__str__() + ": " + self.message

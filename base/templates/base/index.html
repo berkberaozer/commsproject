@@ -55,12 +55,30 @@
 
             <ul class="chat-list" id="chat-list">
                 {% if chats.count > 0 %}
-                        {% for chat in chats %}
-                                <li chat-id="{{ chat.id }}" class="chat"{% if chat.name != None %} group="true" {% endif %}style="text-wrap: wrap">
-                                    <span>{% if chat.name == None %}{% for user in chat.users.all %}{% if user.username != request.user.username %}{{user.username}}{% endif %}{% endfor %}{% else %}{{chat.name}}{% endif %}</span>
-                                    <span chat-id="{{ chat.id }}" class="chat-notification" style="display: none">0</span>
-                                </li>
-                        {% endfor %}
+                    {% for chat in chats %}
+                        <li chat-id="{{ chat.id }}" class="chat"{% if chat.name != None %} group="true" {% endif %}style="text-wrap: wrap">
+                            <span>{% if chat.name == None %}{% for user in chat.users.all %}{% if user.username != request.user.username %}{{user.username}}{% endif %}{% endfor %}{% else %}{{chat.name}}{% endif %}</span>
+                            <span chat-id="{{ chat.id }}" class="chat-notification" style="display: none">0</span>
+                            <div class="chat-element-preview">
+                                {% if chat.messages.last != None %}
+                                    {% if chat.messages.last.source.id == request.user.id %}
+                                        <span {% if chat.messages.last.has_read %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}">{% if chat.messages.last.has_sent %}✓{% endif %}{% if chat.messages.last.has_reached %}✓{% endif %}</span>
+                                        <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.message }}</span>
+                                    {% else %}
+                                        <span></span>
+                                        {% if chat.name == None %}
+                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.message }}</span>
+                                        {% else %}
+                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last }}</span>
+                                        {% endif %}
+                                    {% endif %}
+                                {% else %}
+                                    <span></span>
+                                    <span></span>
+                                {% endif %}
+                            </div>
+                        </li>
+                    {% endfor %}
                 {% else %}
                     <li id="no-chats-banner">No chats are available.</li>
                 {% endif %}
@@ -209,23 +227,23 @@
                     const username = JSON.parse(e["data"])["source_username"];
                     const newChat = document.querySelector(".chat[chat-id='undefined']");
 
-                    if (newChat == null || newChat.firstChild.textContent !==  username) {
+                    if (newChat == null || newChat.firstElementChild.textContent !==  username) {
                         const chatList = document.getElementById("chat-list");
                         const chatElement = getChatElement(chat_id, username)
                         chatElement.removeAttribute("new");
 
                         if (data["type"] === "group_creation") {
                             chatElement.setAttribute("group", "true");
-                            chatElement.firstChild.textContent = data["name"];
+                            chatElement.firstElementChild.textContent = data["name"];
                         }
 
-                        chatList.insertBefore(chatElement, chatList.firstChild);
+                        chatList.insertBefore(chatElement, chatList.firstElementChild);
 
                         const noChatsBanner = document.querySelector("#no-chats-banner");
                         if (noChatsBanner) {
                             noChatsBanner.remove();
                         }
-                    } else if (newChat.firstChild.textContent ===  username) { //if the tab of the source user is opened
+                    } else if (newChat.firstElementChild.textContent ===  username) { //if the tab of the source user is opened
                         newChat.setAttribute("chat-id", chat_id);
                         newChat.removeAttribute("new");
 
@@ -256,11 +274,11 @@
                         const talkTo = activeChat.firstElementChild.textContent.trim();
 
                         if (talkTo === username) {
-                        if (isUserOnline[talkTo]) {
-                            chatHeaderOnline.style.display = "block";
-                        } else {
-                            chatHeaderOnline.style.display = "none";
-                        }
+                            if (isUserOnline[talkTo]) {
+                                chatHeaderOnline.style.display = "block";
+                            } else {
+                                chatHeaderOnline.style.display = "none";
+                            }
                         }
                     }
                 }
@@ -283,10 +301,12 @@
                 const data = JSON.parse(e["data"]);
                 const activeChat = document.querySelector('.chat-list li.active');
                 const chat_notification = document.querySelector('.chat-notification[chat-id="' + data["chat_id"] + '"]');
+                const preview = document.querySelector(".chat-list li[chat-id='"+ chat_id +"'] .chat-element-preview");
+                const targetChat = document.querySelector(".chat-list li[chat-id='"+ chat_id +"']");
 
                 if(data.type === 'chat_message' || data.type === 'chat_file') {
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
-                    if (allMessages[data["chat_id"]] === null) {
+                    if (!(data["chat_id"] in allMessages)) {
                         allMessages[data["chat_id"]] = [];
                     }
                     allMessages[data["chat_id"]].push(data);
@@ -343,26 +363,43 @@
                         chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
                     }
 
+                    preview.firstElementChild.textContent = "";
+                    preview.firstElementChild.nextSibling.textContent = "";
+
                     //if this user is the receiving end, notify the sender that message is reached
                     if(data["source_username"] !== "{{ request.user.username }}") {
                         sendMessage(this, "message_reached", data.message_id);
+                        if (targetChat.hasAttribute("group")) {
+                            preview.childNodes[1].textContent = data.source_username + ": " + data.message;
+                        } else {
+                            preview.childNodes[1].textContent = data.message;
+                        }
+                    } else  {
+                        preview.firstElementChild.textContent = "✓";
+                        preview.firstElementChild.nextElementSibling.textContent = data.message;
                     }
                 } else if (data.type === "message_reached" && activeChat != null) {
                     const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                    const preview = document.querySelector(".chat-element-preview span[message-id='" + data.message_id + "']");
+
                     reachedMessage(chat_id, data.message_id);
 
                     if(message) {
                         message.textContent = " ";
                         message.textContent += "✓✓";
                     }
+                    if(preview) {
+                        preview.textContent = "✓✓";
+                    }
                 }
                 else if (data.type === "message_read" && activeChat != null) {
                     const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                    const preview = document.querySelector(".chat-element-preview span[message-id='" + data.message_id + "']");
+
                     readMessage(chat_id, data.message_id);
 
-                    if(message) {
-                        message.classList.add("blue");
-                    }
+                    if(message) { message.classList.add("blue"); }
+                    if(preview && preview.nextSibling.textContent.indexOf(":") === -1) { preview.classList.add("blue"); }
                 }
             };
 
@@ -479,6 +516,16 @@
 
             messageText.classList.add('messageText');
 
+            if (isGroup && message.source_username !== "{{ request.user.username }}") {
+                const username = document.createElement("div");
+                username.textContent = message.source_username;
+                let stringUniqueHash = [...message.source_username].reduce((acc, char) => {
+                    return char.charCodeAt(0) + ((acc << 5) - acc);
+                }, 0);
+                username.style.color = `hsl(${stringUniqueHash % 360}, 95%, 35%)`;
+                messageElement.appendChild(username);
+            }
+
             if (message.file_name !== "False" && message.file_name) {
                 let re = /(?:\.([^.]+))?$/;
                 extension = re.exec(message.message)[1];
@@ -514,9 +561,9 @@
 
                     readMore.addEventListener('click', function() {
                         let messageElement = document.querySelector(`.message[message-id="${message.message_id}"]`);
-                        let oldChild = messageElement.firstChild;
+                        let oldChild = messageElement.firstElementChild;
                         let scrollHeight = chatMessages.scrollTop;
-                        messageElement.insertBefore(getMessageElement(message, paging + 1, isGroup).firstChild, oldChild);
+                        messageElement.insertBefore(getMessageElement(message, paging + 1, isGroup).firstElementChild, oldChild);
                         messageElement.removeChild(oldChild);
                         chatMessages.scrollTop = scrollHeight;
                         if (goBottomButton.style.display === "none") {
@@ -527,10 +574,6 @@
             } else {
                 messageText.textContent = message.message;
             }
-            if (isGroup) {
-                messageText.textContent = message.source_username + ": " + messageText.textContent;
-            }
-
 
             messageTime.classList.add('messageTime');
 
@@ -635,10 +678,15 @@
             }
 
             const talkTo = document.querySelector('.chat-list li.active').firstElementChild.textContent.trim();
+
             chatHeaderUsername.textContent = talkTo;
 
-            if (isUserOnline[talkTo]) {
-                chatHeaderOnline.style.display = "block";
+            if (!activeChat.hasAttribute("group")) {
+                if (isUserOnline[talkTo]) {
+                    chatHeaderOnline.style.display = "block";
+                } else {
+                    chatHeaderOnline.style.display = "none";
+                }
             } else {
                 chatHeaderOnline.style.display = "none";
             }
@@ -748,7 +796,10 @@
                         }
 
                         readMessage(activeChatId, message.getAttribute("message-id"));
-                        sendMessage(chatSockets[activeChatId], "message_read", message.getAttribute('message-id'));
+
+                        if (message.hasAttribute("received")) {
+                            sendMessage(chatSockets[activeChatId], "message_read", message.getAttribute('message-id'));
+                        }
                     }
                 });
 
@@ -778,7 +829,7 @@
             if (messageText !== '') {
                 if(activeChat.hasAttribute("new")) { //Creating the chat in the database when the creator sending a message
                     let users = []
-                    users.push(activeChat.firstChild.textContent.trim());
+                    users.push(activeChat.firstElementChild.textContent.trim());
                     $.ajax({
                     type: "POST",
                     url: "{% url 'base:create_chat' %}",
@@ -797,8 +848,8 @@
                         allMessages[data["chat_id"]] = [];
 
 
-                        if (isUserOnline[activeChat.firstChild.textContent]) {
-                            sendChatCreationMessage(userSockets[activeChat.firstChild.textContent], data["chat_id"], "{{ request.user.username }}");
+                        if (isUserOnline[activeChat.firstElementChild.textContent]) {
+                            sendChatCreationMessage(userSockets[activeChat.firstElementChild.textContent], data["chat_id"], "{{ request.user.username }}");
                             ongoingMessages.push({chat_id: activeChatId, source_username: "{{ request.user.username }}", message: messageText});
                         }
                         else {
@@ -851,6 +902,10 @@
             chatElement.appendChild(usernameElement);
             chatElement.appendChild(notificationElement);
 
+            const chatPreview = document.createElement("div");
+            if (allMessages[chat_id]) {
+                chatPreview.textContent = allMessages[chat_id][allMessages[chat_id].length].message;
+            }
             return chatElement;
         }
 
@@ -908,7 +963,7 @@
 
                         //open the chat of the user or create new
                         document.querySelectorAll('.username').forEach(el => el.addEventListener('click', () => {
-                            const username = el.firstChild.textContent;
+                            const username = el.firstElementChild.textContent;
                             const chats = document.querySelectorAll('#chat-list .chat');
                             let alreadyChatting = false;
 
@@ -917,7 +972,7 @@
                             }
 
                             chats.forEach(chat => {
-                                if (username.trim() === chat.firstChild.textContent.trim()) { //open the chat if it exists
+                                if (username.trim() === chat.firstElementChild.textContent.trim()) { //open the chat if it exists
                                     alreadyChatting = true;
                                     chat.click();
                                     userList.innerHTML = '';
@@ -948,7 +1003,7 @@
 
                                 chatElement.click()
 
-                                userSockets[chatElement.firstChild.textContent] = createUserSocket(chatElement.firstChild.textContent);
+                                userSockets[chatElement.firstElementChild.textContent] = createUserSocket(chatElement.firstElementChild.textContent);
 
                                 userList.innerHTML = '';
                             }
@@ -1035,7 +1090,7 @@
             const nameInput = document.getElementById("group-name-input");
             let name;
             let users = []
-            selectedUsers.childNodes.forEach(child => users.push(child.firstChild.textContent));
+            selectedUsers.childNodes.forEach(child => users.push(child.firstElementChild.textContent));
 
             if(nameInput.value === "") {
                 name = "Group Chat";
@@ -1065,8 +1120,8 @@
                             noChatsBanner.remove();
                         }
 
-                        chatElement.firstChild.textContent = name;
-                        chatList.insertBefore(chatElement, chatList.firstChild);
+                        chatElement.firstElementChild.textContent = name;
+                        chatList.insertBefore(chatElement, chatList.firstElementChild);
                         const chat_id = data["chat_id"];
 
                         chatElement.setAttribute("chat-id", chat_id);

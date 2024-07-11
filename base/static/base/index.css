@@ -97,7 +97,7 @@ body {
     background: #383838;
 }
 .active {
-    font-weight: bold;
+
     background: #454545;
 }
 
@@ -461,4 +461,9 @@ emoji-picker {
 
 #no-chats-banner {
     margin: 10px;
+}
+
+.chat-element-preview {
+    font-size: 0.8em;
+    color: lightgray;
 }
