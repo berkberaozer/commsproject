@@ -62,8 +62,8 @@
                             <div class="chat-element-preview">
                                 {% if chat.messages.last != None %}
                                     {% if chat.messages.last.source.id == request.user.id %}
-                                        <span {% if chat.messages.last.has_read %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}">{% if chat.messages.last.has_sent %}✓{% endif %}{% if chat.messages.last.has_reached %}✓{% endif %}</span>
-                                        <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.message }}</span>
+                                        <span {% if chat.messages.last.has_read %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if chat.messages.last.has_reached %}✓{% endif %}</span>
+                                        <span message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{{ chat.messages.last.message }}</span>
                                     {% else %}
                                         <span></span>
                                         {% if chat.name == None %}
@@ -335,7 +335,6 @@
                             chatMessages.appendChild(getMessageElement(data, 0));
                         }
 
-
                         if (viewingOlderMessages && data["source_username"] !== "{{ request.user.username }}") {
                             goBottomNotification.textContent = parseInt(goBottomNotification.textContent) + 1 + "";
                             if(goBottomNotification.style.display === "none") {
@@ -363,8 +362,11 @@
                         chat_notification.textContent = parseInt(chat_notification.textContent) + 1 + "";
                     }
 
-                    preview.firstElementChild.textContent = "";
-                    preview.firstElementChild.nextSibling.textContent = "";
+                    preview.children[0].classList.remove("blue");
+                    preview.children[0].textContent = "";
+                    preview.children[0].setAttribute("message-id", data.message_id);
+                    preview.children[1].textContent = "";
+                    preview.children[1].setAttribute("message-id", data.message_id);
 
                     //if this user is the receiving end, notify the sender that message is reached
                     if(data["source_username"] !== "{{ request.user.username }}") {
@@ -374,32 +376,35 @@
                         } else {
                             preview.childNodes[1].textContent = data.message;
                         }
-                    } else  {
-                        preview.firstElementChild.textContent = "✓";
-                        preview.firstElementChild.nextElementSibling.textContent = data.message;
+                        preview.children[0].setAttribute("received", "true");
+                        preview.children[1].setAttribute("received", "true");
+                    } else {
+                        preview.children[0].textContent = "✓ ";
+                        preview.children[1].textContent = data.message;
+                        preview.children[0].setAttribute("sent", "true");
+                        preview.children[1].setAttribute("sent", "true");
                     }
-                } else if (data.type === "message_reached" && activeChat != null) {
-                    const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                } else if (data.type === "message_reached") {
+                    const messageStatus = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
                     const preview = document.querySelector(".chat-element-preview span[message-id='" + data.message_id + "']");
 
                     reachedMessage(chat_id, data.message_id);
-
-                    if(message) {
-                        message.textContent = " ";
-                        message.textContent += "✓✓";
+                    if(messageStatus) {
+                        messageStatus.textContent = " ";
+                        messageStatus.textContent += "✓✓";
                     }
-                    if(preview) {
+                    if(preview && preview.hasAttribute("sent")) {
                         preview.textContent = "✓✓";
                     }
                 }
-                else if (data.type === "message_read" && activeChat != null) {
-                    const message = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                else if (data.type === "message_read") {
+                    const messageStatus = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
+                    if(messageStatus) { messageStatus.classList.add("blue"); }
+
                     const preview = document.querySelector(".chat-element-preview span[message-id='" + data.message_id + "']");
+                    if(preview && preview.hasAttribute("sent")) { preview.classList.add("blue"); }
 
                     readMessage(chat_id, data.message_id);
-
-                    if(message) { message.classList.add("blue"); }
-                    if(preview && preview.nextSibling.textContent.indexOf(":") === -1) { preview.classList.add("blue"); }
                 }
             };
 
@@ -784,21 +789,20 @@
 
                 messages.forEach(message => {
                     if (message.offsetTop - event.target.offsetTop < event.target.scrollTop + event.target.clientHeight - message.scrollHeight) {
-                        message.setAttribute("has_read", 'true');
-                        notification.textContent = parseInt(notification.textContent) - 1 + "";
-
-                        if (goBottomNotification.textContent > 0) {
-                            goBottomNotification.textContent = parseInt(goBottomNotification.textContent) - 1 + "";
-                        }
-
-                        if(parseInt(notification.textContent) === 0) {
-                            notification.style.display = "none";
-                        }
-
-                        readMessage(activeChatId, message.getAttribute("message-id"));
-
-                        if (message.hasAttribute("received")) {
+                        if (message.classList.contains("received")) {
+                            notification.textContent = parseInt(notification.textContent) - 1 + "";
+                            message.setAttribute("has_read", 'true');
                             sendMessage(chatSockets[activeChatId], "message_read", message.getAttribute('message-id'));
+
+                            if (goBottomNotification.textContent > 0) {
+                                goBottomNotification.textContent = parseInt(goBottomNotification.textContent) - 1 + "";
+                            }
+
+                            if(parseInt(notification.textContent) === 0) {
+                                notification.style.display = "none";
+                            }
+
+                            readMessage(activeChatId, message.getAttribute("message-id"));
                         }
                     }
                 });
