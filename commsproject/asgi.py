@@ -12,6 +12,7 @@ import os
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
+from django.contrib.auth import get_user_model
 from django.core.asgi import get_asgi_application
 import base.routing
 import django
@@ -25,3 +26,5 @@ application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AllowedHostsOriginValidator(AuthMiddlewareStack(URLRouter(base.routing.websocket_urlpatterns))),
 })
+
+get_user_model().objects.filter(online=True).update(online=False)

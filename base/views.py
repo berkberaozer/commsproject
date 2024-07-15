@@ -65,7 +65,8 @@ class IndexView(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         chats = Chat.objects.filter(users=self.request.user)
 
-        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE}, request=self.request, template_name="base/index.html")
+        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE},
+                      request=self.request, template_name="base/index.html")
 
 
 class SearchUser(LoginRequiredMixin, View):  # case-insensitive user search, request user is excluded
@@ -106,7 +107,8 @@ class UploadFile(LoginRequiredMixin, View):
     @transaction.atomic
     def post(self, request, *args, **kwargs):
         date = timezone.now()
-        file = File(io.BytesIO(request.body),name=request.user.username + "-" + str(date.timestamp()) + guess_extension(self.request.content_type))
+        file = File(file=io.BytesIO(request.body),
+                    name=request.user.username + "-" + str(date.timestamp()) + guess_extension(self.request.content_type))
         file_name = default_storage.save(file.name, file)
         file_url = default_storage.url(file_name)
 

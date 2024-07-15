@@ -1,9 +1,10 @@
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
+from django.core import serializers
 from django.utils import timezone
 
-from .models import Chat, Message
+from .models import Chat, Message, Status
 import json
 import redis
 
@@ -32,34 +33,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if message_type == "chat_message":
             message = await self.create_message(data["source_username"], data["message"])
 
-            await self.channel_layer.group_send(self.chat_id, {"type": "chat_message", "source_username": message.source.username,
+            await self.channel_layer.group_send(self.chat_id, {"type": "chat_message",
+                                                               "source_username": message.source.username,
                                                                "message": message.message,
                                                                "date": message.date.__str__(),
                                                                "message_id": message.id,
-                                                               "has_reached": message.has_reached,
-                                                               "has_read": message.has_read, "chat_id":
-                                                                   message.chat_id, "has_sent": message.has_sent}
-                                                )
+                                                               "statuses": await self.get_statuses(message),
+                                                               "chat_id": message.chat_id,
+                                                               "has_sent": message.has_sent})
         elif message_type == "chat_file":
             message = await self.create_file_message(data["source_username"], data["message"], data["file_name"])
 
-            await self.channel_layer.group_send(self.chat_id, {"type": "chat_file", "source_username": message.source_username,
+            await self.channel_layer.group_send(self.chat_id, {"type": "chat_file",
+                                                               "source_username": message.source_username,
                                                                "message": message.message,
                                                                "date": message.date.__str__(),
                                                                "message_id": message.id,
-                                                               "has_reached": message.has_reached,
-                                                               "has_read": message.has_read, "chat_id":
-                                                                   message.chat_id, "has_sent": message.has_sent,
-                                                               "file_name": message.file_name}
-                                                )
+                                                               "statuses": await self.get_statuses(message),
+                                                               "chat_id": message.chat_id,
+                                                               "has_sent": message.has_sent,
+                                                               "file_name": message.file_name})
         elif message_type == "message_reached":
-            await self.update_reached(data["message_id"], True)
+            await self.update_reached(data["message_id"], data["user_id"], True)
 
-            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"]})
+            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"], "user_id": data["user_id"]})
         elif message_type == "message_read":
-            await self.update_read(data["message_id"], True)
+            await self.update_read(data["message_id"], data["user_id"], True)
 
-            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"]})
+            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"], "user_id": data["user_id"]})
 
     async def chat_message(self, event):
         await self.send(text_data=json.dumps(event))
@@ -73,11 +74,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def message_reached(self, event):
         await self.send(text_data=json.dumps(event))
 
+    async def all_reached(self, event):
+        await self.send(text_data=json.dumps(event))
+
     @database_sync_to_async
     def create_message(self, source_username, message):
         date = timezone.now()
-        message = Message.objects.create(source=get_user_model().objects.get(username=source_username),
-                                         message=message, date=date, chat=Chat.objects.get(id=self.chat_id))
+        source = get_user_model().objects.get(username=source_username)
+        message = Message.objects.create(source=source, message=message,
+                                         date=date, chat=Chat.objects.get(id=self.chat_id))
+        for user in Chat.objects.get(id=self.chat_id).users.all():
+            Status.objects.create(user=user, message=message)
+
+        sender_status = Status.objects.filter(message_id=message.id, user_id=source.id)[0]
+        sender_status.has_read = True
+        sender_status.has_reached = True
+        sender_status.save()
 
         return message
 
@@ -85,25 +97,39 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def create_file_message(self, source_username, message, file_name):
         date = timezone.now()
         message = Message.objects.create(source=get_user_model().objects.get(username=source_username),
-                                         message=message, date=date, chat=Chat.objects.get(id=self.chat_id), file_name=file_name)
+                                         message=message, date=date,
+                                         chat=Chat.objects.get(id=self.chat_id), file_name=file_name)
 
         return message
 
     @database_sync_to_async
-    def update_read(self, message_id, boolean):
-        msg = Message.objects.get(id=message_id)
-        msg.has_read = boolean
-        msg.save()
+    def update_read(self, message_id, user_id, boolean):
+        status = Status.objects.filter(message_id=message_id, user_id=user_id)[0]
+        status.has_read = boolean
+        status.save()
 
-        return msg
+        return status
 
     @database_sync_to_async
-    def update_reached(self, message_id, boolean):
-        msg = Message.objects.get(id=message_id)
-        msg.has_reached = boolean
-        msg.save()
+    def update_reached(self, message_id, user_id, boolean):
+        status = Status.objects.filter(message_id=message_id, user_id=user_id)[0]
+        status.has_reached = boolean
+        status.save()
 
-        return msg
+        return status
+
+    @database_sync_to_async
+    def all_statuses_reached(self, message_id):
+        statuses = Status.objects.filter(message_id=message_id).values("has_reached")
+
+        for status in statuses.iterator():
+            if not status["has_reached"]:
+                return False
+        return True
+
+    @database_sync_to_async
+    def get_statuses(self, message):
+        return serializers.serialize('json', list(message.statuses.all()))
 
 
 class UserConsumer(AsyncWebsocketConsumer):
@@ -152,8 +178,10 @@ class UserConsumer(AsyncWebsocketConsumer):
             )
         elif data["type"] == "group_creation":
             await self.channel_layer.group_send(
-                self.username, {"type": "group_creation", "chat_id": data["chat_id"], "name": data["name"], "source_username": data["source_username"]}
-            )
+                self.username, {"type": "group_creation",
+                                "chat_id": data["chat_id"],
+                                "name": data["name"],
+                                "source_username": data["source_username"]})
 
     async def chat_creation(self, event):
         source_username = event["source_username"]
@@ -170,7 +198,8 @@ class UserConsumer(AsyncWebsocketConsumer):
 
     async def group_creation(self, event):
         await self.send(text_data=json.dumps(
-            {"type": event["type"], "chat_id": event["chat_id"], "name": event["name"], "source_username": event["source_username"]}))
+            {"type": event["type"], "chat_id": event["chat_id"],
+             "name": event["name"], "source_username": event["source_username"]}))
 
     async def is_online(self, event):
         await self.send(text_data=json.dumps({"type": event["type"], "value": event["value"]}))

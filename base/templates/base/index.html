@@ -6,12 +6,7 @@
 </head>
 
 <body>
-    <div class="sidebar">
-        <div id="logout-button"><img src="{% static 'base/logout.png' %}" class="sidebar-icon" alt="Logout"></div>
-        <form action="{% url 'logout' %}" method="post" id="logout-form">
-            {% csrf_token %}
-        </form>
-    </div>
+
 
     <div class="new-chat-overlay" id="new-chat-overlay" style="display: none">
         <h2 style="margin: 10px 0">New chat</h2>
@@ -45,6 +40,12 @@
     </div>
 
     <div class="container">
+        <div class="sidebar">
+        <div id="logout-button"><img src="{% static 'base/logout.png' %}" class="sidebar-icon" alt="Logout"></div>
+        <form action="{% url 'logout' %}" method="post" id="logout-form">
+            {% csrf_token %}
+        </form>
+    </div>
         <div class="chat-list-container">
             <div class="chat-list-header">
                 <h2 style="float: left; margin-left: 5px">Chats</h2>
@@ -59,17 +60,17 @@
                         <li chat-id="{{ chat.id }}" class="chat"{% if chat.name != None %} group="true" {% endif %}style="text-wrap: wrap">
                             <span>{% if chat.name == None %}{% for user in chat.users.all %}{% if user.username != request.user.username %}{{user.username}}{% endif %}{% endfor %}{% else %}{{chat.name}}{% endif %}</span>
                             <span chat-id="{{ chat.id }}" class="chat-notification" style="display: none">0</span>
-                            <div class="chat-element-preview">
+                            <div class="chat-element-preview" style="display: -webkit-box; -webkit-line-clamp: 1; line-clamp: 1">
                                 {% if chat.messages.last != None %}
                                     {% if chat.messages.last.source.id == request.user.id %}
-                                        <span {% if chat.messages.last.has_read %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if chat.messages.last.has_reached %}✓{% endif %}</span>
+                                        <span {% if chat.messages.last.has_read %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if chat.messages.last.has_reached %}✓{% endif %}&nbsp</span>
                                         <span message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{{ chat.messages.last.message }}</span>
                                     {% else %}
                                         <span></span>
                                         {% if chat.name == None %}
                                             <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.message }}</span>
                                         {% else %}
-                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last }}</span>
+                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.source.username }}:&nbsp{{ chat.messages.last.message }}</span>
                                         {% endif %}
                                     {% endif %}
                                 {% else %}
@@ -92,10 +93,6 @@
             </div>
             <div class="chat-messages" id="chat-messages"></div>
 
-            <div class="go-bottom-button" id="go-bottom-button">
-                <span id="go-bottom-notification">0</span>
-                <img src="{% static 'base/go-bottom.png' %}" alt="Go down" id="go-bottom-icon" class="sidebar-icon">
-            </div>
             <div class="chat-input" id="chat-input">
                 {% csrf_token %}
                 <emoji-picker style="display: none" id="emoji-picker"></emoji-picker>
@@ -116,6 +113,11 @@
             </div>
         </div>
     </div>
+
+<div class="go-bottom-button" id="go-bottom-button">
+    <span id="go-bottom-notification">0</span>
+    <img src="{% static 'base/go-bottom.png' %}" alt="Go down" id="go-bottom-icon" class="sidebar-icon">
+</div>
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
@@ -188,25 +190,43 @@
 
             {% for message in chat.messages.all %}
                 {% if message.source.username != request.user.username %}
-                {% if message.has_read == False %}
-                    notification = document.querySelector(".chat-notification[chat-id='{{ message.chat_id }}']");
-                    if (notification.style.display === "none") {
-                        notification.style.display = "";
+                    {% if message.statuses == False %}
+                        notification = document.querySelector(".chat-notification[chat-id='{{ message.chat_id }}']");
+                        if (notification.style.display === "none") {
+                            notification.style.display = "";
+                        }
+                        notification.textContent = parseInt(notification.textContent) + 1 + "";
+                    {% endif %}
+
+                    {% for status in message.statuses.all %}
+                        {% if status.user.id == request.user.id and status.has_reached == False %}
+                            sendMessage(chatSockets[{{ message.chat_id }}], type="message_reached", id= {{ message.id }});
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+
+                if (!({{ message.chat_id }} in allMessages)) {
+                     allMessages[{{ message.chat_id }}] = [];
+                }
+
+                allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_username': "{{ message.source.username }}", 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
+
+                {% autoescape off %}
+                    messageStatuses = "{{ message.statuses.all.values }}"
+                    messageStatuses = messageStatuses.split("[")[1].split("]")[0];
+
+                    messageStatuses = "[" + messageStatuses + "]"
+                    messageStatuses = messageStatuses.replaceAll("'", '"');
+                    messageStatuses = messageStatuses.replaceAll("True", 'true');
+                    messageStatuses = messageStatuses.replaceAll("False", 'false');
+                    statuses = JSON.parse(messageStatuses);
+                    console.log(statuses);
+
+                    allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"] = {};
+                    for (status in statuses) {
+                        allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"][statuses[status].user_id] = statuses[status];
                     }
-                    notification.textContent = parseInt(notification.textContent) + 1 + "";
-                {% endif %}
-
-                {% if message.has_reached == False %}
-                    sendMessage(chatSockets[{{ message.chat_id }}], type="message_reached", id= {{ message.id }});
-                {% endif %}
-            {% endif %}
-
-            if (!({{ message.chat_id }} in allMessages)) {
-                 allMessages[{{ message.chat_id }}] = [];
-            }
-
-            allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_username': "{{ message.source.username }}", 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_reached': {{ message.has_reached|yesno:"true,false" }}, 'has_read': {{ message.has_read|yesno:"true,false" }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
-
+                {% endautoescape %}
             {% endfor %}
         {% endfor %}
 
@@ -299,12 +319,19 @@
 
             chatSocket.onmessage = function(e) {
                 const data = JSON.parse(e["data"]);
+                console.log(data);
                 const activeChat = document.querySelector('.chat-list li.active');
                 const chat_notification = document.querySelector('.chat-notification[chat-id="' + data["chat_id"] + '"]');
                 const preview = document.querySelector(".chat-list li[chat-id='"+ chat_id +"'] .chat-element-preview");
                 const targetChat = document.querySelector(".chat-list li[chat-id='"+ chat_id +"']");
 
                 if(data.type === 'chat_message' || data.type === 'chat_file') {
+                    let statuses = JSON.parse(data.statuses)
+                    for(let status in statuses) {
+                        statuses[status] = statuses[status]["fields"];
+                    }
+                    data.statuses = statuses;
+
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
                     if (!(data["chat_id"] in allMessages)) {
                         allMessages[data["chat_id"]] = [];
@@ -367,19 +394,23 @@
                     preview.children[0].setAttribute("message-id", data.message_id);
                     preview.children[1].textContent = "";
                     preview.children[1].setAttribute("message-id", data.message_id);
+                    preview.children[0].removeAttribute("sent");
+                    preview.children[0].removeAttribute("received");
+                    preview.children[1].removeAttribute("sent");
+                    preview.children[1].removeAttribute("received");
 
                     //if this user is the receiving end, notify the sender that message is reached
                     if(data["source_username"] !== "{{ request.user.username }}") {
                         sendMessage(this, "message_reached", data.message_id);
                         if (targetChat.hasAttribute("group")) {
-                            preview.childNodes[1].textContent = data.source_username + ": " + data.message;
+                            preview.childNodes[1].textContent = data.source_username + ":\xa0" + data.message;
                         } else {
                             preview.childNodes[1].textContent = data.message;
                         }
                         preview.children[0].setAttribute("received", "true");
                         preview.children[1].setAttribute("received", "true");
                     } else {
-                        preview.children[0].textContent = "✓ ";
+                        preview.children[0].textContent = "✓\xa0";
                         preview.children[1].textContent = data.message;
                         preview.children[0].setAttribute("sent", "true");
                         preview.children[1].setAttribute("sent", "true");
@@ -388,13 +419,13 @@
                     const messageStatus = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
                     const preview = document.querySelector(".chat-element-preview span[message-id='" + data.message_id + "']");
 
-                    reachedMessage(chat_id, data.message_id);
+                    reachedMessage(chat_id, data.message_id, data.user_id);
                     if(messageStatus) {
                         messageStatus.textContent = " ";
                         messageStatus.textContent += "✓✓";
                     }
                     if(preview && preview.hasAttribute("sent")) {
-                        preview.textContent = "✓✓";
+                        preview.textContent = "✓✓\xa0";
                     }
                 }
                 else if (data.type === "message_read") {
@@ -404,7 +435,7 @@
                     const preview = document.querySelector(".chat-element-preview span[message-id='" + data.message_id + "']");
                     if(preview && preview.hasAttribute("sent")) { preview.classList.add("blue"); }
 
-                    readMessage(chat_id, data.message_id);
+                    readMessage(chat_id, data.message_id, data.user_id);
                 }
             };
 
@@ -433,6 +464,7 @@
                 } else {
                     socket.send(JSON.stringify({
                         'message_id': id,
+                        'user_id': {{ request.user.id }},
                         'type': type,
                     }));
                 }
@@ -729,10 +761,10 @@
             let target = event.target;
 
             if(event.target.id !== "no-chats-banner" && $(event.target).parent().id !== "no-chats-banner") {
-                if(event.target.tagName.toLowerCase() !== "li") {
+                if(event.target.parentNode.tagName.toLowerCase() === "li") {
                     target = event.target.parentNode;
-                } else if (event.target.tagName.toLowerCase() === "span"){
-                    target = event.target;
+                } else if (event.target.parentNode.tagName.toLowerCase() === "div"){
+                    target = event.target.parentNode.parentNode;
                 }
 
                 if(target.tagName.toLowerCase() === "li") {
