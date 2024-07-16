@@ -2,6 +2,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.core import serializers
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import Chat, Message, Status
@@ -80,16 +81,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def create_message(self, source_username, message):
         date = timezone.now()
-        source = get_user_model().objects.get(username=source_username)
+        source = get_user_model().objects.filter(username=source_username)[0]
         message = Message.objects.create(source=source, message=message,
                                          date=date, chat=Chat.objects.get(id=self.chat_id))
-        for user in Chat.objects.get(id=self.chat_id).users.all():
+        for user in Chat.objects.get(id=self.chat_id).users.filter(~Q(username=source_username)).all():
             Status.objects.create(user=user, message=message)
-
-        sender_status = Status.objects.filter(message_id=message.id, user_id=source.id)[0]
-        sender_status.has_read = True
-        sender_status.has_reached = True
-        sender_status.save()
 
         return message
 
@@ -129,7 +125,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_statuses(self, message):
-        return serializers.serialize('json', list(message.statuses.all()))
+        return list(message.statuses.all().values())
 
 
 class UserConsumer(AsyncWebsocketConsumer):

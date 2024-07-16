@@ -63,7 +63,7 @@
                             <div class="chat-element-preview" style="display: -webkit-box; -webkit-line-clamp: 1; line-clamp: 1">
                                 {% if chat.messages.last != None %}
                                     {% if chat.messages.last.source.id == request.user.id %}
-                                        <span {% if chat.messages.last.has_read %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if chat.messages.last.has_reached %}✓{% endif %}&nbsp</span>
+                                        <span {% if not False in chat.messages.last.statuses.all %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if not False in chat.messages.last.statuses.all.has_reached %}✓{% endif %}&nbsp</span>
                                         <span message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{{ chat.messages.last.message }}</span>
                                     {% else %}
                                         <span></span>
@@ -220,16 +220,16 @@
                     messageStatuses = messageStatuses.replaceAll("True", 'true');
                     messageStatuses = messageStatuses.replaceAll("False", 'false');
                     statuses = JSON.parse(messageStatuses);
-                    console.log(statuses);
 
                     allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"] = {};
                     for (status in statuses) {
                         allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"][statuses[status].user_id] = statuses[status];
                     }
+
                 {% endautoescape %}
             {% endfor %}
         {% endfor %}
-
+        console.log(allMessages);
         function createUserSocket(username) {
             const userSocket = new WebSocket(
                 `ws://${window.location.host}/base/user/${username}/`
@@ -319,18 +319,19 @@
 
             chatSocket.onmessage = function(e) {
                 const data = JSON.parse(e["data"]);
-                console.log(data);
                 const activeChat = document.querySelector('.chat-list li.active');
                 const chat_notification = document.querySelector('.chat-notification[chat-id="' + data["chat_id"] + '"]');
                 const preview = document.querySelector(".chat-list li[chat-id='"+ chat_id +"'] .chat-element-preview");
                 const targetChat = document.querySelector(".chat-list li[chat-id='"+ chat_id +"']");
 
                 if(data.type === 'chat_message' || data.type === 'chat_file') {
-                    let statuses = JSON.parse(data.statuses)
+                    let statuses = data["statuses"];
+                    let dict = {};
+
                     for(let status in statuses) {
-                        statuses[status] = statuses[status]["fields"];
+                        dict[statuses[status].user_id] = statuses[status];
                     }
-                    data.statuses = statuses;
+                    data.statuses = dict;
 
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
                     if (!(data["chat_id"] in allMessages)) {
@@ -541,14 +542,34 @@
             return dateElement;
         }
 
+        function allRead(message) {
+            for (let key in message['statuses']) {
+              if (message["statuses"][key]["has_read"] === false) {
+                  return false;
+              }
+            }
+            return true;
+        }
+
+        function allReached(message) {
+            for (let key in message['statuses']) {
+              if (message["statuses"][key]["has_reached"] === false) {
+                  return false;
+              }
+            }
+            return true;
+        }
+
         function getMessageElement(message, paging, isGroup) {
             const messageElement = document.createElement('div');
             const messageText = document.createElement('p');
             const messageTime = document.createElement('span');
+            const hasRead = allRead(message);
+            const hasReached = allReached(message);
 
             messageElement.classList.add('message', message["source_username"] === "{{ request.user.username }}" ? 'sent' : 'received');
-            messageElement.setAttribute('has_read', message["has_read"]);
-            messageElement.setAttribute('has_reached', message["has_reached"]);
+            messageElement.setAttribute('has_read', hasRead + '');
+            messageElement.setAttribute('has_reached', hasReached + '');
             messageElement.setAttribute('has_sent', message["has_sent"]);
 
             messageText.classList.add('messageText');
@@ -633,10 +654,10 @@
                 if (message["has_sent"] === true) {
                     messageStatus.textContent += "✓";
                 }
-                if (message["has_reached"] === true) {
+                if (hasReached === true) {
                     messageStatus.textContent += "✓";
                 }
-                if (message["has_read"] === true) {
+                if (hasRead === true) {
                     messageStatus.classList.add("blue");
                 }
                 messageTime.appendChild(messageStatus);
@@ -676,7 +697,7 @@
                         }
                         currentDateIndicator = date;
 
-                        if(messages[i]["source_username"] !== "{{ request.user.username }}" && messages[i].has_read === false && !unread) {
+                        if(messages[i]["source_username"] !== "{{ request.user.username }}" && allRead(messages[i]) === false && !unread) {
                             unread = true;
 
                             const unreadElement = document.createElement("div");
@@ -737,21 +758,25 @@
             messageInput.value = '';
         }
 
-        function readMessage(chat_id, message_id) {
+        function readMessage(chat_id, message_id, user_id) {
             message_id = parseInt(message_id);
+            user_id = parseInt(user_id);
+
             for (let i = 0; i < allMessages[chat_id].length; i++) {
                 if (allMessages[chat_id][i]["message_id"] === message_id) {
-                    allMessages[chat_id][i].has_read = true;
+                    allMessages[chat_id][i]["statuses"][user_id].has_read = true;
                     break;
                 }
             }
         }
 
-        function reachedMessage(chat_id, message_id) {
+        function reachedMessage(chat_id, message_id, user_id) {
             message_id = parseInt(message_id);
+            user_id = parseInt(user_id);
+
             for (let i = 0; i < allMessages[chat_id].length; i++) {
                 if (allMessages[chat_id][i]["message_id"] === message_id) {
-                    allMessages[chat_id][i].has_reached = true;
+                    allMessages[chat_id][i]["statuses"][user_id].has_reached = true;
                     break;
                 }
             }
@@ -834,7 +859,7 @@
                                 notification.style.display = "none";
                             }
 
-                            readMessage(activeChatId, message.getAttribute("message-id"));
+                            readMessage(activeChatId, message.getAttribute("message-id"), {{ request.user.id }});
                         }
                     }
                 });
@@ -940,7 +965,7 @@
 
             const chatPreview = document.createElement("div");
             if (allMessages[chat_id]) {
-                chatPreview.textContent = allMessages[chat_id][allMessages[chat_id].length].message;
+                chatPreview.textContent = allMessages[chat_id][allMessages[chat_id].length - 1].message;
             }
             return chatElement;
         }
