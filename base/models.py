@@ -30,7 +30,7 @@ class Message(models.Model):
     message = models.TextField()
     date = models.DateTimeField()
     has_sent = models.BooleanField(default=True)
-    file_name = models.TextField(default=False)
+    file_name = models.TextField(default=None, null=True, blank=True)
 
     class Meta:
         ordering = ["date"]

@@ -65,14 +65,14 @@
                                     {% if chat.messages.last.source.id == request.user.id %}
                                         {% with status=chat.messages.last.statuses.values|dictsortreversed:"has_read"|last %}
                                         <span {% if status.has_read != False %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if status.has_reached != False %}✓{% endif %}&nbsp</span>
-                                        <span message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{{ chat.messages.last.message }}</span>
+                                        <span message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.file_name == None %}{{ chat.messages.last.message }}{% else %}{{ chat.messages.last.file_name }}{% endif %}</span>
                                         {% endwith %}
                                     {% else %}
                                         <span></span>
                                         {% if chat.name == None %}
-                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.message }}</span>
+                                            <span message-id="{{ chat.messages.last.id }}">{% if chat.messages.last.file_name == None %}{{ chat.messages.last.message }}{% else %}{{ chat.messages.last.file_name }}{% endif %}</span>
                                         {% else %}
-                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.source.username }}:&nbsp{{ chat.messages.last.message }}</span>
+                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.source.username }}:&nbsp{% if chat.messages.last.file_name == None %}{{ chat.messages.last.message }}{% else %}{{ chat.messages.last.file_name }}{% endif %}</span>
                                         {% endif %}
                                     {% endif %}
                                 {% else %}
@@ -473,15 +473,27 @@
                     if(data["source_username"] !== "{{ request.user.username }}") {
                         sendMessage(this, "message_reached", data.message_id);
                         if (targetChat.hasAttribute("group")) {
-                            preview.children[1].textContent = data.source_username + ":\xa0" + data.message;
+                            if (data.type === 'chat_file') {
+                                preview.children[1].textContent = data.source_username + ":\xa0" + data.file_name;
+                            } else {
+                                preview.children[1].textContent = data.source_username + ":\xa0" + data.message;
+                            }
                         } else {
-                            preview.children[1].textContent = data.message;
+                            if (data.type === 'chat_file') {
+                                preview.children[1].textContent = data.file_name;
+                            } else {
+                                preview.children[1].textContent = data.message;
+                            }
                         }
                         preview.children[0].setAttribute("received", "true");
                         preview.children[1].setAttribute("received", "true");
                     } else {
                         preview.children[0].textContent = "✓\xa0";
-                        preview.children[1].textContent = data.message;
+                        if (data.type === 'chat_file') {
+                            preview.children[1].textContent = data.file_name;
+                        } else {
+                            preview.children[1].textContent = data.message;
+                        }
                         preview.children[0].setAttribute("sent", "true");
                         preview.children[1].setAttribute("sent", "true");
                     }
@@ -520,24 +532,24 @@
             chatSockets[chat_id] = chatSocket;
         }
 
-        function sendMessage(socket, type, id, message, fileName) {
+        function sendMessage(socket, type, identification, message, fileName) {
             waitForSocketConnection(socket, function() {
                 if(type === 'chat_message') {
                     socket.send(JSON.stringify({
                     'message': message,
-                    'source_username': id,
+                    'source_username': identification,
                     'type': type,
                 }));
                 } else if (type === 'chat_file') {
                     socket.send(JSON.stringify({
                         'message': message,
-                        'source_username': id,
+                        'source_username': identification,
                         'type': type,
                         'file_name': fileName,
                     }))
                 } else {
                     socket.send(JSON.stringify({
-                        'message_id': id,
+                        'message_id': identification,
                         'user_id': {{ request.user.id }},
                         'type': type,
                     }));
@@ -665,7 +677,7 @@
                 messageElement.appendChild(username);
             }
 
-            if (message.file_name !== "False" && message.file_name) {
+            if (message.file_name !== "None" && message.file_name) {
                 let re = /(?:\.([^.]+))?$/;
                 extension = re.exec(message.message)[1];
 
@@ -805,8 +817,6 @@
                         goBottomNotification.style.display = "block";
                         goBottomNotification.textContent = document.querySelector('.chat-list li.active .chat-notification').textContent;
                     } else {
-                        let chatMessages = document.getElementById('chat-messages');
-
                         chatMessages.scrollTo(0, chatMessages.scrollHeight);
                     }
 
@@ -1416,7 +1426,7 @@
                 xhr.onreadystatechange = function () {
                     if(xhr.readyState === 4) {
                         message = JSON.parse(xhr.responseText)
-                        sendMessage(chatSockets[activeChatId], "chat_file", {{ request.user.id }}, message["message"], message["fileName"]);
+                        sendMessage(chatSockets[activeChatId], "chat_file", "{{ request.user.username }}", message["message"], message["fileName"]);
                     }
                 }
             } else {

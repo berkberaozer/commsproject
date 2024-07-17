@@ -46,7 +46,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message = await self.create_file_message(data["source_username"], data["message"], data["file_name"])
 
             await self.channel_layer.group_send(self.chat_id, {"type": "chat_file",
-                                                               "source_username": message.source_username,
+                                                               "source_username": data["source_username"],
                                                                "message": message.message,
                                                                "date": message.date.__str__(),
                                                                "message_id": message.id,
@@ -95,6 +95,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message = Message.objects.create(source=get_user_model().objects.get(username=source_username),
                                          message=message, date=date,
                                          chat=Chat.objects.get(id=self.chat_id), file_name=file_name)
+        for user in Chat.objects.get(id=self.chat_id).users.filter(~Q(username=source_username)).all():
+            Status.objects.create(user=user, message=message)
 
         return message
 
