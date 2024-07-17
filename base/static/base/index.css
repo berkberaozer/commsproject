@@ -471,7 +471,8 @@ emoji-picker {
     overflow: hidden !important;
     text-overflow: ellipsis;
     block-ellipsis: auto;
-    display: block;
-    line-clamp: 1;
     max-lines: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    line-clamp: 1
 }

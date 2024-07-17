@@ -3,6 +3,7 @@ from django.shortcuts import render
 from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 from django.views import View
 from django.contrib.auth import authenticate, login, get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -45,15 +46,15 @@ class RegisterView(View):
     @transaction.atomic
     def post(self, request, *args, **kwargs):
         form = RegistrationForm(request.POST)
-
+        pass_phrase = get_random_string(length=255)
         if form.is_valid():
             form = form.cleaned_data
             get_user_model().objects.create_user(username=form['username'], email=form['email'],
                                                  password=form['password'],
                                                  first_name=form['first_name'],
-                                                 last_name=form['last_name'])
+                                                 last_name=form['last_name'], pass_phrase=pass_phrase)
 
-            return render(request, self.template_name, {'form': form, 'register': True})
+            return render(request, self.template_name, {'form': form, 'register': True, 'pass_phrase': pass_phrase, 'username': form['username'], 'email': form['email']})
         else:
             return render(request, self.template_name, {'form': form})
 
@@ -113,3 +114,19 @@ class UploadFile(LoginRequiredMixin, View):
         file_url = default_storage.url(file_name)
 
         return JsonResponse({"message": file_url, "fileName": self.request.headers.get("name")})
+
+
+class PassPhrase(LoginRequiredMixin, View):
+    @transaction.atomic
+    def get(self, request, *args, **kwargs):
+        return JsonResponse({"passPhrase": get_user_model().objects.get(id=self.request.user.id).pass_phrase})
+
+
+class PublicKey(LoginRequiredMixin, View):
+    @transaction.atomic
+    def post(self, request, *args, **kwargs):
+        user = get_user_model().objects.get(id=self.request.user.id)
+        user.public_key = request.POST.get('public_key')
+        user.save()
+
+        return JsonResponse({"success": True})

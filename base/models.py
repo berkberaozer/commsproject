@@ -8,6 +8,8 @@ from django.db.models.constraints import UniqueConstraint
 
 class User(AbstractUser):
     online = models.BooleanField(default=False)
+    public_key = models.TextField(null=True, blank=True)
+    pass_phrase = models.TextField(null=False, blank=False)
 
     def __str__(self):
         return self.username
