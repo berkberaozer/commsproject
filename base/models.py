@@ -47,3 +47,4 @@ class Status(models.Model):
 
     class Meta:
         unique_together = (("message", "user"),)
+        verbose_name_plural = "statuses"

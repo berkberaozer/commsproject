@@ -476,3 +476,8 @@ emoji-picker {
     -webkit-line-clamp: 1;
     line-clamp: 1
 }
+
+.chat-element-preview span:nth-child(1) {
+    letter-spacing: -0.25em;
+    margin-right: 0.25em;
+}

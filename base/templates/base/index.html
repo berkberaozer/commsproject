@@ -4,6 +4,7 @@
     <link rel="stylesheet" href="{% static 'base/index.css' %}">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
     <script src="https://unpkg.com/openpgp@5.11.2/dist/openpgp.min.js"></script>
+    <script src="https://unpkg.com/openpgp@5.11.2/dist/openpgp.min.js"></script>
 </head>
 
 <body>
@@ -62,8 +63,10 @@
                             <div class="chat-element-preview">
                                 {% if chat.messages.last != None %}
                                     {% if chat.messages.last.source.id == request.user.id %}
-                                        <span {% if not False in chat.messages.last.statuses.all %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if not False in chat.messages.last.statuses.all.has_reached %}✓{% endif %}&nbsp</span>
+                                        {% with status=chat.messages.last.statuses.values|dictsortreversed:"has_read"|last %}
+                                        <span {% if status.has_read != False %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if status.has_reached != False %}✓{% endif %}&nbsp</span>
                                         <span message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{{ chat.messages.last.message }}</span>
+                                        {% endwith %}
                                     {% else %}
                                         <span></span>
                                         {% if chat.name == None %}
@@ -120,6 +123,17 @@
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
+        (async () => {
+            const message = await openpgp.createMessage({ text: "sa" }); // or createMessage({ text: 'string' })
+            const encrypted = await openpgp.encrypt({
+                message,
+                passwords: ['secret stuff'], // multiple passwords possible
+                config: { preferredCompressionAlgorithm: openpgp.enums.compression.zlib } // compress the data with zlib
+            });
+            console.log(encrypted);
+        })();
+
+
         function setAdminKeys() {
             (async () => {
                 const { privateKey, publicKey } = await openpgp.generateKey({
@@ -459,9 +473,9 @@
                     if(data["source_username"] !== "{{ request.user.username }}") {
                         sendMessage(this, "message_reached", data.message_id);
                         if (targetChat.hasAttribute("group")) {
-                            preview.childNodes[1].textContent = data.source_username + ":\xa0" + data.message;
+                            preview.children[1].textContent = data.source_username + ":\xa0" + data.message;
                         } else {
-                            preview.childNodes[1].textContent = data.message;
+                            preview.children[1].textContent = data.message;
                         }
                         preview.children[0].setAttribute("received", "true");
                         preview.children[1].setAttribute("received", "true");
@@ -627,9 +641,17 @@
             const hasReached = allReached(message);
 
             messageElement.classList.add('message', message["source_username"] === "{{ request.user.username }}" ? 'sent' : 'received');
-            messageElement.setAttribute('has_read', hasRead + '');
-            messageElement.setAttribute('has_reached', hasReached + '');
-            messageElement.setAttribute('has_sent', message["has_sent"]);
+
+            if ('{{ request.user.username }}' === message["source_username"]) {
+                messageElement.setAttribute('has_read', hasRead + '');
+                messageElement.setAttribute('has_reached', hasReached + '');
+                messageElement.setAttribute('has_sent', message["has_sent"]);
+            } else {
+                console.log(message);
+                messageElement.setAttribute('has_read', message["statuses"][{{ request.user.id }}]["has_read"] + '');
+                messageElement.setAttribute('has_reached', message["statuses"][{{ request.user.id }}]["has_reached"] + '');
+                messageElement.setAttribute('has_sent', message["has_sent"]);
+            }
 
             messageText.classList.add('messageText');
 
@@ -779,7 +801,6 @@
 
                     if(firstUnread != null) {
                         chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight / 2, behavior: "instant"});
-
                         goBottomButton.style.display = "block";
                         goBottomNotification.style.display = "block";
                         goBottomNotification.textContent = document.querySelector('.chat-list li.active .chat-notification').textContent;
