@@ -4,7 +4,7 @@
     <link rel="stylesheet" href="{% static 'base/index.css' %}">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
     <script src="https://unpkg.com/openpgp@5.11.2/dist/openpgp.min.js"></script>
-    <script src="https://unpkg.com/openpgp@5.11.2/dist/openpgp.min.js"></script>
+
 </head>
 
 <body>
@@ -42,7 +42,7 @@
     <div class="container">
         <div class="sidebar">
         <div id="logout-button"><img src="{% static 'base/logout.png' %}" class="sidebar-icon" alt="Logout"></div>
-        <form action="{% url 'logout' %}" method="post" id="logout-form">
+        <form action="{% url 'base:logout' %}" method="post" id="logout-form">
             {% csrf_token %}
         </form>
     </div>
@@ -123,6 +123,74 @@
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
+        //makes the ajax django auth compatible by appending the django csrf token to ajax header
+        $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+             if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
+                 xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+             }
+         }, async: true,
+        });
+
+        function sha512(str) {
+          return crypto.subtle.digest("SHA-512", new TextEncoder("utf-8").encode(str)).then(buf => {
+            return Array.prototype.map.call(new Uint8Array(buf), x=>(('00'+x.toString(32)).slice(-2))).join('');
+          });
+        }
+
+        async function encryptMessage(key, plaintext) {
+            let enc = new TextEncoder();
+            let encoded = enc.encode(plaintext);
+            key = enc.encode(key.slice(0, key.length/4));
+            let iv = new Uint8Array(16);
+            console.log(key.length)
+            return await window.crypto.subtle.encrypt({name: "AES-GCM", iv: iv}, await window.crypto.subtle.importKey("raw", key, "AES-GCM", true, ["encrypt", "decrypt"]), encoded)
+        }
+
+        async function decryptMessage(key, ciphertext) {
+            let enc = new TextEncoder();
+            let dec = new TextDecoder();
+            key = enc.encode(key);
+            let decrypted = await window.crypto.subtle.decrypt({name: "AES-GCM", iv: new Uint8Array(12)}, key, ciphertext);
+
+            return dec.decode(decrypted);
+        }
+
+        {% if enc_private_key == None %}
+            (async () => {
+            const { privateKey, publicKey } = await openpgp.generateKey({
+                type: 'ecc',
+                curve: 'curve25519',
+                userIDs: [{ name: "{{ form.username.value|default_if_none:'' }}", email: "{{ form.email.value|default_if_none:'' }}" }],
+                passphrase: {% if pass_phrase != None %} '{{ pass_phrase }}' {% else %} "" {% endif %},
+                format: 'armored'
+            });
+
+            sessionStorage.setItem("private_key", privateKey);
+            sessionStorage.setItem("public_key", publicKey);
+
+            const enc_key = await sha512("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}");
+            console.log(enc_key);
+            sessionStorage.setItem("enc_key", enc_key.toString());
+            sessionStorage.removeItem("password");
+            sessionStorage.setItem("enc_private_key", encryptMessage(enc_key, sessionStorage.getItem("private_key")).toString());
+
+            $.ajax({
+                type: "POST",
+                url: "{% url 'base:set_credentials' %}",
+                data: {
+                    "public_key": sessionStorage.getItem("public_key"),
+                    "enc_private_key": sessionStorage.getItem("enc_private_key"),
+                },
+                dataType: "json",
+                success: function (data) {
+
+                },
+            });
+            })();
+        {% endif %}
+
+
         (async () => {
             const message = await openpgp.createMessage({ text: "sa" }); // or createMessage({ text: 'string' })
             const encrypted = await openpgp.encrypt({
@@ -130,9 +198,7 @@
                 passwords: ['secret stuff'], // multiple passwords possible
                 config: { preferredCompressionAlgorithm: openpgp.enums.compression.zlib } // compress the data with zlib
             });
-            console.log(encrypted);
         })();
-
 
         function setAdminKeys() {
             (async () => {
@@ -164,52 +230,6 @@
                  }
              }
              return cookieValue;
-        }
-
-        //makes the ajax django auth compatible by appending the django csrf token to ajax header
-        $.ajaxSetup({
-        beforeSend: function(xhr, settings) {
-             if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
-                 xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
-             }
-         }, async: true,
-        });
-
-        let passPhrase;
-        $.ajax({
-        type: "GET",
-        url: "{% url 'base:pass_phrase' %}",
-        dataType: "json",
-        success: function (data) {
-            passPhrase = data["passPhrase"];
-        },
-        });
-
-        if (!localStorage.getItem("{{ request.user.username }}_private_key")) {
-            (async () => {
-                const { privateKey, publicKey } = await openpgp.generateKey({
-                    type: 'ecc',
-                    curve: 'curve25519',
-                    userIDs: [{ name: "{{ request.user.username }}", email: "{{ request.user.email }}" }],
-                    passphrase:  passPhrase,
-                    format: 'armored'
-                });
-
-                localStorage.setItem("{{ request.user.username }}_private_key", privateKey);
-                localStorage.setItem("{{ request.user.username }}_public_key", publicKey);
-            })();
-        } else {
-            $.ajax({
-                type: "POST",
-                url: "{% url 'base:public_key' %}",
-                data: {
-                    "public_key": localStorage.getItem("{{ request.user.username }}_public_key"),
-                },
-                dataType: "json",
-                success: function (data) {
-                    passPhrase = data["passPhrase"];
-                },
-            });
         }
 
         const chatInput = document.getElementById("chat-input");
@@ -659,7 +679,6 @@
                 messageElement.setAttribute('has_reached', hasReached + '');
                 messageElement.setAttribute('has_sent', message["has_sent"]);
             } else {
-                console.log(message);
                 messageElement.setAttribute('has_read', message["statuses"][{{ request.user.id }}]["has_read"] + '');
                 messageElement.setAttribute('has_reached', message["statuses"][{{ request.user.id }}]["has_reached"] + '');
                 messageElement.setAttribute('has_sent', message["has_sent"]);
@@ -670,10 +689,12 @@
             if (isGroup && message.source_username !== "{{ request.user.username }}") {
                 const username = document.createElement("div");
                 username.textContent = message.source_username;
-                let stringUniqueHash = [...message.source_username].reduce((acc, char) => {
+
+                let stringUniqueHash = [...message.source_username].reduce((acc, char) => { //message username unique color
                     return char.charCodeAt(0) + ((acc << 5) - acc);
                 }, 0);
                 username.style.color = `hsl(${stringUniqueHash % 360}, 95%, 35%)`;
+
                 messageElement.appendChild(username);
             }
 

@@ -75,7 +75,7 @@ TEMPLATES = [
 ]
 
 LOGIN_REDIRECT_URL = '/base/'
-LOGOUT_REDIRECT_URL = '/auth/login'
+LOGOUT_REDIRECT_URL = '/base/login'
 
 WSGI_APPLICATION = 'commsproject.wsgi.application'
 AUTH_USER_MODEL = 'base.User'

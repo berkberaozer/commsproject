@@ -9,6 +9,7 @@ from django.db.models.constraints import UniqueConstraint
 class User(AbstractUser):
     online = models.BooleanField(default=False)
     public_key = models.TextField(null=True, blank=True)
+    enc_private_key = models.TextField(null=True, blank=True)
     pass_phrase = models.TextField(null=False, blank=False)
 
     def __str__(self):
@@ -16,7 +17,7 @@ class User(AbstractUser):
 
 
 class Chat(models.Model):
-    users = models.ManyToManyField(User, related_name='users')
+    users = models.ManyToManyField(User, related_name='chats')
     name = models.CharField(max_length=120, null=True, blank=True)
 
     def __str__(self):
@@ -26,11 +27,11 @@ class Chat(models.Model):
 class Message(models.Model):
     source = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_messages")
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
-    targets = models.ManyToManyField(User, related_name="received_messages", through="Status")
+    targets = models.ManyToManyField(User, through="Status", related_name="received_messages", )
     message = models.TextField()
     date = models.DateTimeField()
     has_sent = models.BooleanField(default=True)
-    file_name = models.TextField(default=None, null=True, blank=True)
+    file_name = models.TextField(null=True, blank=True)
 
     class Meta:
         ordering = ["date"]

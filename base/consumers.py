@@ -84,7 +84,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         source = get_user_model().objects.filter(username=source_username)[0]
         message = Message.objects.create(source=source, message=message,
                                          date=date, chat=Chat.objects.get(id=self.chat_id))
-        for user in Chat.objects.get(id=self.chat_id).users.filter(~Q(username=source_username)).all():
+        for user in Chat.objects.get(id=self.chat_id).users.exclude(username=source_username).all():
             Status.objects.create(user=user, message=message)
 
         return message
@@ -95,7 +95,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message = Message.objects.create(source=get_user_model().objects.get(username=source_username),
                                          message=message, date=date,
                                          chat=Chat.objects.get(id=self.chat_id), file_name=file_name)
-        for user in Chat.objects.get(id=self.chat_id).users.filter(~Q(username=source_username)).all():
+        for user in Chat.objects.get(id=self.chat_id).users.exclude(username=source_username).all():
             Status.objects.create(user=user, message=message)
 
         return message

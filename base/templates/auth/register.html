@@ -1,0 +1,23 @@
+{% load static %}
+
+<head>
+    <title>Register</title>
+    <link rel="stylesheet" href="{% static 'base/login.css' %}">
+    <script src="https://unpkg.com/openpgp@5.11.2/dist/openpgp.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        {% if register == True %}
+            <p style="color: green" register="true">Registration is successful.</p>
+        {% else %}
+            <form method="post">
+                {% csrf_token %}
+                {{ form.as_p }}
+                <button type="submit">Register</button>
+            </form>
+        {% endif %}
+        <form action="{% url 'base:login' %}">
+            <button type="submit">Get Back</button>
+        </form>
+    </div>
+</body>

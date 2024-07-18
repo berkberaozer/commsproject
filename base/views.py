@@ -1,13 +1,15 @@
+from django.contrib.messages.context_processors import messages
 from django.db import transaction
 from django.shortcuts import render
-from django.http import HttpResponseRedirect, JsonResponse
+from django.http import HttpResponseRedirect, JsonResponse, HttpResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django.views import View
-from django.contrib.auth import authenticate, login, get_user_model
+from django.contrib.auth import authenticate, login, get_user_model, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth.views import LoginView
+from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth.forms import AuthenticationForm
 from django.core.files.storage import default_storage
 from django.db.models import Q
 from django.core.files.base import File
@@ -24,6 +26,8 @@ from .models import Chat
 # Create your views here.
 
 class LoginPage(LoginView):
+    template_name = 'auth/login.html'
+
     def post(self, request, *args, **kwargs):
         user = authenticate(request, username=request.POST.get('username'), password=request.POST.get('password'))
 
@@ -31,22 +35,31 @@ class LoginPage(LoginView):
             login(request, user)
 
             return HttpResponseRedirect(reverse("base:index"))
+        else:
+            return render(request=request, template_name=self.template_name,
+                          context={'form': AuthenticationForm(data=request.POST)})
 
     def get(self, request, *args, **kwargs):
-        return render(request=request, template_name="base/index.html")
+        return render(request=request, template_name=self.template_name, context={'form': AuthenticationForm})
+
+
+class LogoutPage(LoginRequiredMixin, LogoutView):
+    def get(self, request, *args, **kwargs):
+        logout(request.user)
+        return HttpResponseRedirect(reverse("base:index"))
 
 
 class RegisterView(View):
-    template_name = 'registration/register.html'
+    template_name = 'auth/register.html'
 
     def get(self, request, *args, **kwargs):
-        form = RegistrationForm
-        return render(request, self.template_name, {'form': form})
+        return render(request, self.template_name, {'form': RegistrationForm})
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
         form = RegistrationForm(request.POST)
         pass_phrase = get_random_string(length=255)
+
         if form.is_valid():
             form = form.cleaned_data
             get_user_model().objects.create_user(username=form['username'], email=form['email'],
@@ -54,19 +67,21 @@ class RegisterView(View):
                                                  first_name=form['first_name'],
                                                  last_name=form['last_name'], pass_phrase=pass_phrase)
 
-            return render(request, self.template_name, {'form': form, 'register': True, 'pass_phrase': pass_phrase, 'username': form['username'], 'email': form['email']})
+            return render(request, self.template_name,
+                          {'form': form, 'register': True, 'pass_phrase': pass_phrase, 'username': form['username'],
+                           'email': form['email']})
         else:
             return render(request, self.template_name, {'form': form})
 
 
 class IndexView(LoginRequiredMixin, View):
-    login_url = '../auth/login/'
+    login_url = 'base:login'
 
     @transaction.atomic
     def get(self, request, *args, **kwargs):
         chats = Chat.objects.filter(users=self.request.user)
 
-        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE},
+        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE, 'pass_phrase': self.request.user.pass_phrase},
                       request=self.request, template_name="base/index.html")
 
 
@@ -109,24 +124,22 @@ class UploadFile(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         date = timezone.now()
         file = File(file=io.BytesIO(request.body),
-                    name=request.user.username + "-" + str(date.timestamp()) + guess_extension(self.request.content_type))
+                    name=request.user.username + "-" + str(date.timestamp()) + guess_extension(
+                        self.request.content_type))
         file_name = default_storage.save(file.name, file)
         file_url = default_storage.url(file_name)
 
         return JsonResponse({"message": file_url, "fileName": self.request.headers.get("name")})
 
 
-class PassPhrase(LoginRequiredMixin, View):
-    @transaction.atomic
-    def get(self, request, *args, **kwargs):
-        return JsonResponse({"passPhrase": get_user_model().objects.get(id=self.request.user.id).pass_phrase})
-
-
-class PublicKey(LoginRequiredMixin, View):
+class SetCredentials(LoginRequiredMixin, View):
     @transaction.atomic
     def post(self, request, *args, **kwargs):
-        user = get_user_model().objects.get(id=self.request.user.id)
-        user.public_key = request.POST.get('public_key')
-        user.save()
+        if request.POST.get('public_key'):
+            self.request.user.public_key = request.POST.get('public_key')
+        if request.POST.get('enc_private_key'):
+            self.request.user.private_key = request.POST.get('enc_private_key')
+
+        self.request.user.save()
 
         return JsonResponse({"success": True})
