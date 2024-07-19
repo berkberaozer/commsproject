@@ -81,7 +81,10 @@ class IndexView(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         chats = Chat.objects.filter(users=self.request.user)
 
-        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE, 'pass_phrase': self.request.user.pass_phrase},
+        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE,
+                               'pass_phrase': self.request.user.pass_phrase,
+                               'enc_private_key': self.request.user.enc_private_key,
+                               'public_key': self.request.user.public_key},
                       request=self.request, template_name="base/index.html")
 
 
@@ -138,8 +141,16 @@ class SetCredentials(LoginRequiredMixin, View):
         if request.POST.get('public_key'):
             self.request.user.public_key = request.POST.get('public_key')
         if request.POST.get('enc_private_key'):
-            self.request.user.private_key = request.POST.get('enc_private_key')
+            self.request.user.enc_private_key = request.POST.get('enc_private_key')
 
         self.request.user.save()
 
         return JsonResponse({"success": True})
+
+
+class GetPublicKey(LoginRequiredMixin, View):
+    @transaction.atomic()
+    def get(self, request, *args, **kwargs):
+        username = request.GET.get('username')
+        user = get_user_model().objects.get(username=username)
+        return JsonResponse({"success": True, "public_key": user.public_key})

@@ -138,25 +138,55 @@
           });
         }
 
-        async function encryptMessage(key, plaintext) {
-            let enc = new TextEncoder();
-            let encoded = enc.encode(plaintext);
-            key = enc.encode(key.slice(0, key.length/4));
-            let iv = new Uint8Array(16);
-            console.log(key.length)
-            return await window.crypto.subtle.encrypt({name: "AES-GCM", iv: iv}, await window.crypto.subtle.importKey("raw", key, "AES-GCM", true, ["encrypt", "decrypt"]), encoded)
-        }
+        (async () => {
+            openpgp.config.allowInsecureDecryptionWithSigningKeys = true;
+        })();
 
-        async function decryptMessage(key, ciphertext) {
+
+        async function encryptMessage(plaintext) {
             let enc = new TextEncoder();
             let dec = new TextDecoder();
-            key = enc.encode(key);
-            let decrypted = await window.crypto.subtle.decrypt({name: "AES-GCM", iv: new Uint8Array(12)}, key, ciphertext);
+            let iv = new Uint8Array(16);
 
-            return dec.decode(decrypted);
+            const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
+            const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+
+            let encoded = enc.encode(plaintext);
+
+            return window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, enc_key, encoded).then(x => sessionStorage.setItem("enc_private_key", _arrayBufferToBase64(x)));
         }
 
-        {% if enc_private_key == None %}
+        async function decryptMessage(ciphertext) {
+            let enc = new TextEncoder();
+            let dec = new TextDecoder();
+            let iv = new Uint8Array(16);
+
+            const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
+            const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+
+            await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, enc_key, _base64ToArrayBuffer(ciphertext)).then(x => sessionStorage.setItem("private_key", dec.decode(x))).catch(e => console.log(e));
+        }
+
+        function _arrayBufferToBase64( buffer ) {
+            var binary = '';
+            var bytes = new Uint8Array( buffer );
+            var len = bytes.byteLength;
+            for (var i = 0; i < len; i++) {
+                binary += String.fromCharCode( bytes[ i ] );
+            }
+            return window.btoa( binary );
+        }
+
+        function _base64ToArrayBuffer(base64) {
+            var binaryString = atob(base64);
+            var bytes = new Uint8Array(binaryString.length);
+            for (var i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        {% if enc_private_key == None or enc_private_key == "" %}
             (async () => {
             const { privateKey, publicKey } = await openpgp.generateKey({
                 type: 'ecc',
@@ -169,13 +199,15 @@
             sessionStorage.setItem("private_key", privateKey);
             sessionStorage.setItem("public_key", publicKey);
 
-            const enc_key = await sha512("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}");
-            console.log(enc_key);
+            //const enc_key = await sha512("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}");
+            let enc = new TextEncoder();
+            const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
+            const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+
             sessionStorage.setItem("enc_key", enc_key.toString());
             sessionStorage.removeItem("password");
-            sessionStorage.setItem("enc_private_key", encryptMessage(enc_key, sessionStorage.getItem("private_key")).toString());
 
-            $.ajax({
+            await encryptMessage(sessionStorage.getItem("private_key")).then(x => $.ajax({
                 type: "POST",
                 url: "{% url 'base:set_credentials' %}",
                 data: {
@@ -184,12 +216,20 @@
                 },
                 dataType: "json",
                 success: function (data) {
-
                 },
-            });
+            }))
+            })();
+        {% else %}
+            (async () => {
+            let enc = new TextEncoder();
+            const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
+            const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+            sessionStorage.setItem("enc_key", enc_key);
+            sessionStorage.setItem("enc_private_key", "{{ enc_private_key }}");
+            sessionStorage.removeItem("password");
+            await decryptMessage("{{ enc_private_key }}")
             })();
         {% endif %}
-
 
         (async () => {
             const message = await openpgp.createMessage({ text: "sa" }); // or createMessage({ text: 'string' })
@@ -297,8 +337,17 @@
                 if (!({{ message.chat_id }} in allMessages)) {
                      allMessages[{{ message.chat_id }}] = [];
                 }
+                (async () => {
+                const privateKey = await openpgp.decryptKey({
+                    privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
+                    passphrase: "{{ pass_phrase }}"
+                });
 
-                allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_username': "{{ message.source.username }}", 'message': '{{ message.message }}', 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
+                const { data: decrypted, signatures } = await openpgp.decrypt({
+                    message: await openpgp.readMessage({armoredMessage: `{{ message.message }}` }),
+                    decryptionKeys: privateKey
+                });
+                allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_username': "{{ message.source.username }}", 'message': decrypted, 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
 
                 {% autoescape off %}
                     messageStatuses = "{{ message.statuses.all.values }}"
@@ -314,7 +363,7 @@
                     for (status in statuses) {
                         allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"][statuses[status].user_id] = statuses[status];
                     }
-
+                    })();
                 {% endautoescape %}
             {% endfor %}
         {% endfor %}
@@ -390,6 +439,9 @@
                             }
                         }
                     }
+                } else if (data["type"] === "public_key" && publicKeys["username"] === null) {
+                    console.log(data);
+                    publicKeys["username"] = data["value"];
                 }
             }
 
@@ -414,6 +466,7 @@
                 const targetChat = document.querySelector(".chat-list li[chat-id='"+ chat_id +"']");
 
                 if(data.type === 'chat_message' || data.type === 'chat_file') {
+                    (async () => {
                     let statuses = data["statuses"];
                     let dict = {};
 
@@ -422,10 +475,30 @@
                     }
                     data.statuses = dict;
 
+
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
                     if (!(data["chat_id"] in allMessages)) {
                         allMessages[data["chat_id"]] = [];
                     }
+
+                    const message = await openpgp.readMessage({
+                        armoredMessage: data["message"]
+                    });
+
+                    const privateKey = await openpgp.decryptKey({
+                        privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
+                        passphrase: "{{ pass_phrase }}"
+                    });
+
+                    console.log(privateKey);
+
+                    const { data: decrypted, signatures } = await openpgp.decrypt({
+                        message: message,
+                        decryptionKeys: privateKey,
+                        config: { allowInsecureDecryptionWithSigningKeys: true }
+                    });
+                    data["message"] = decrypted;
+
                     allMessages[data["chat_id"]].push(data);
 
                     //if the incoming message's chat is open, show the message
@@ -517,6 +590,7 @@
                         preview.children[0].setAttribute("sent", "true");
                         preview.children[1].setAttribute("sent", "true");
                     }
+                    })();
                 } else if (data.type === "message_reached") {
                     const messageStatus = document.querySelector(".sent[message-id='" + data.message_id + "'] span span");
                     const preview = document.querySelector(".chat-element-preview span[message-id='" + data.message_id + "']");
@@ -552,17 +626,29 @@
             chatSockets[chat_id] = chatSocket;
         }
 
-        function sendMessage(socket, type, identification, message, fileName) {
+        function sendMessage(socket, type, identification, plaintext, fileName) {
             waitForSocketConnection(socket, function() {
                 if(type === 'chat_message') {
-                    socket.send(JSON.stringify({
-                    'message': message,
-                    'source_username': identification,
-                    'type': type,
-                }));
+                    (async () => {
+                        let publicKeysArmored = [`{{ public_key }}`];
+                        for (let i=0; i<groupUsers[socket.chat_id].length; i++) {
+                            publicKeysArmored.push(publicKeys[groupUsers[socket.chat_id][i]]);
+                        }
+                        const messageKeys = await Promise.all(publicKeysArmored.map(armoredKey => openpgp.readKey({ armoredKey })));
+                        const encrypted = await openpgp.encrypt({
+                            message: await openpgp.createMessage({ text: plaintext }), // input as Message object
+                            encryptionKeys: messageKeys,
+                        });
+
+                        socket.send(JSON.stringify({
+                            'message': encrypted,
+                            'source_username': identification,
+                            'type': type,
+                        }));
+                    })();
                 } else if (type === 'chat_file') {
                     socket.send(JSON.stringify({
-                        'message': message,
+                        'message': plaintext,
                         'source_username': identification,
                         'type': type,
                         'file_name': fileName,
@@ -1191,6 +1277,22 @@
                                 userSockets[chatElement.firstElementChild.textContent] = createUserSocket(chatElement.firstElementChild.textContent);
 
                                 userList.innerHTML = '';
+
+                                if (!(chatElement.firstElementChild.textContent in publicKeys)) {
+                                    $.ajax({
+                                    type: "GET",
+                                    url: "{% url 'base:get_public_key' %}",
+                                    data: {
+                                        "username": chatElement.firstElementChild.textContent,
+                                    },
+                                    dataType: "json",
+                                    success: function (data) {
+                                        publicKeys[chatElement.firstElementChild.textContent] = data["public_key"];
+                                    },
+                                    })
+                                }
+
+
                             }
                         }));
                     },
@@ -1251,6 +1353,17 @@
 
                                 if (!(el.textContent in userSockets)) {
                                     userSockets[el.textContent] = createUserSocket(el.textContent);
+                                    $.ajax({
+                                    type: "GET",
+                                    url: "{% url 'base:get_public_key' %}",
+                                    data: {
+                                        "username": el.textContent,
+                                    },
+                                    dataType: "json",
+                                    success: function (data) {
+                                        publicKeys[el.textContent] = data["public_key"];
+                                    },
+                                    })
                                 }
 
                                 selectedUsers.appendChild(userElement);
@@ -1403,6 +1516,7 @@
         })
 
         document.getElementById('logout-button').addEventListener('click', function() {
+            sessionStorage.clear();
             let form = document.getElementById('logout-form');
             form.submit();
         })

@@ -11,4 +11,5 @@ urlpatterns = [
     path("create_chat", views.CreateChat.as_view(), name="create_chat"),
     path("upload", views.UploadFile.as_view(), name="upload"),
     path("set_credentials", views.SetCredentials.as_view(), name="set_credentials"),
+    path("get_public_key", views.GetPublicKey.as_view(), name="get_public_key"),
 ]
