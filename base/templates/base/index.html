@@ -60,21 +60,11 @@
                         <li chat-id="{{ chat.id }}" class="chat"{% if chat.name != None %} group="true" {% endif %}style="text-wrap: wrap">
                             <span>{% if chat.name == None %}{% for user in chat.users.all %}{% if user.username != request.user.username %}{{user.username}}{% endif %}{% endfor %}{% else %}{{chat.name}}{% endif %}</span>
                             <span chat-id="{{ chat.id }}" class="chat-notification" style="display: none">0</span>
+                            <span></span>
                             <div class="chat-element-preview">
                                 {% if chat.messages.last != None %}
-                                    {% if chat.messages.last.source.id == request.user.id %}
-                                        {% with status=chat.messages.last.statuses.values|dictsortreversed:"has_read"|last %}
-                                        <span {% if status.has_read != False %} class="blue"{% endif %} message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.has_sent %}✓{% endif %}{% if status.has_reached != False %}✓{% endif %}&nbsp</span>
-                                        <span message-id="{{ chat.messages.last.id }}" {% if chat.messages.last.source_username != request.user.username %}received="true"{% else %}sent="true"{% endif %}>{% if chat.messages.last.file_name == None %}{{ chat.messages.last.message }}{% else %}{{ chat.messages.last.file_name }}{% endif %}</span>
-                                        {% endwith %}
-                                    {% else %}
-                                        <span></span>
-                                        {% if chat.name == None %}
-                                            <span message-id="{{ chat.messages.last.id }}">{% if chat.messages.last.file_name == None %}{{ chat.messages.last.message }}{% else %}{{ chat.messages.last.file_name }}{% endif %}</span>
-                                        {% else %}
-                                            <span message-id="{{ chat.messages.last.id }}">{{ chat.messages.last.source.username }}:&nbsp{% if chat.messages.last.file_name == None %}{{ chat.messages.last.message }}{% else %}{{ chat.messages.last.file_name }}{% endif %}</span>
-                                        {% endif %}
-                                    {% endif %}
+                                    <span message-id="{{ chat.messages.last.id }}"></span>
+                                    <span message-id="{{ chat.messages.last.id }}"></span>
                                 {% else %}
                                     <span></span>
                                     <span></span>
@@ -302,8 +292,25 @@
         let groupUsers = {}
         let publicKeys = {}
 
+        let privateKey;
+        (async () => {
+            await (async () => {
+                let enc = new TextEncoder();
+                const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
+                const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+                sessionStorage.setItem("enc_key", enc_key);
+                sessionStorage.setItem("enc_private_key", "{{ enc_private_key }}");
+                sessionStorage.removeItem("password");
+                await decryptMessage("{{ enc_private_key }}")
+
+                privateKey = await openpgp.decryptKey({
+                    privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
+                    passphrase: "{{ pass_phrase }}"
+                });
+            })();
         {% for chat in chats %}
             createChatSocket({{chat.id}});
+
             {% for user in chat.users.all %}
                 {% if user.username != request.user.username %}
                     publicKeys['{{ user.username }}'] = `{{ user.public_key }}`
@@ -316,6 +323,70 @@
             {% endfor %}
 
             {% for message in chat.messages.all %}
+                if (!({{ message.chat_id }} in allMessages)) {
+                     allMessages[{{ message.chat_id }}] = [];
+                }
+                {
+                let { data: decrypted, signatures } = await openpgp.decrypt({
+                    message: await openpgp.readMessage({armoredMessage: `{{ message.message }}` }),
+                    decryptionKeys: privateKey
+                });
+                allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_username': "{{ message.source.username }}", 'message': decrypted, 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
+
+                {% autoescape off %}
+                messageStatuses = "{{ message.statuses.all.values }}"
+                messageStatuses = messageStatuses.split("[")[1].split("]")[0];
+
+                messageStatuses = "[" + messageStatuses + "]"
+                messageStatuses = messageStatuses.replaceAll("'", '"');
+                messageStatuses = messageStatuses.replaceAll("True", 'true');
+                messageStatuses = messageStatuses.replaceAll("False", 'false');
+                statuses = JSON.parse(messageStatuses);
+
+                allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"] = {};
+                for (status in statuses) {
+                    allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"][statuses[status].user_id] = statuses[status];
+                }
+                {% endautoescape %}
+
+                {% if message.id == chat.messages.last.id %}
+                    let chatElement = document.querySelector(".chat[chat-id='{{ chat.id }}']");
+                    chatElement.children[3].children[1].textContent = allMessages[{{ chat.id }}][allMessages[{{ chat.id }}].length - 1]["message"];
+
+                    {% if chat.messages.last.source.id == request.user.id %}
+                        {% with status=chat.messages.last.statuses.values|dictsortreversed:"has_reached"|last %}
+                            {% if status.has_read != False %}
+                                chatElement.children[3].children[0].classList.add("blue");
+                            {% endif %}
+                            {% if status.has_reached != False %}
+                                chatElement.children[3].children[0].textContent = "✓✓ ";
+                            {% elif chat.messages.last.has_sent %}
+                                chatElement.children[3].children[0].textContent = "✓";
+                            {% endif %}
+                            {% if chat.messages.last.file_name == None %}
+                                chatElement.children[3].children[1].textContent = allMessages[{{ chat.id }}][allMessages[{{ chat.id }}].length - 1]["message"];
+                            {% else %}
+                                chatElement.children[3].children[1].textContent = "{{ chat.messages.last.file_name }}";
+                            {% endif %}
+                        {% endwith %}
+                    {% else %}
+                        {% if chat.name == None %}
+                            {% if chat.messages.last.file_name == None %}
+                                chatElement.children[3].children[1].textContent = allMessages[{{ chat.id }}][allMessages[{{ chat.id }}].length - 1]["message"];
+                            {% else %}
+                                chatElement.children[3].children[1].textContent = "{{ chat.messages.last.file_name }}";
+                            {% endif %}
+                        {% else %}
+                                chatElement.children[3].children[1].textContent = "{{ chat.messages.last.source.username }}: ";
+                            {% if chat.messages.last.file_name == None %}
+                                chatElement.children[3].children[1].textContent += allMessages[{{ chat.id }}][allMessages[{{ chat.id }}].length - 1]["message"];
+                            {% else %}
+                                chatElement.children[3].children[1].textContent += "{{ chat.messages.last.file_name }}"
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+
                 {% if message.source.username != request.user.username %}
                     {% for status in message.statuses.all %}
                         {% if status.user.id == request.user.id and status.has_reached == False %}
@@ -333,40 +404,10 @@
                         {% endif %}
                     {% endfor %}
                 {% endif %}
-
-                if (!({{ message.chat_id }} in allMessages)) {
-                     allMessages[{{ message.chat_id }}] = [];
                 }
-                (async () => {
-                const privateKey = await openpgp.decryptKey({
-                    privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
-                    passphrase: "{{ pass_phrase }}"
-                });
-
-                const { data: decrypted, signatures } = await openpgp.decrypt({
-                    message: await openpgp.readMessage({armoredMessage: `{{ message.message }}` }),
-                    decryptionKeys: privateKey
-                });
-                allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_username': "{{ message.source.username }}", 'message': decrypted, 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
-
-                {% autoescape off %}
-                    messageStatuses = "{{ message.statuses.all.values }}"
-                    messageStatuses = messageStatuses.split("[")[1].split("]")[0];
-
-                    messageStatuses = "[" + messageStatuses + "]"
-                    messageStatuses = messageStatuses.replaceAll("'", '"');
-                    messageStatuses = messageStatuses.replaceAll("True", 'true');
-                    messageStatuses = messageStatuses.replaceAll("False", 'false');
-                    statuses = JSON.parse(messageStatuses);
-
-                    allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"] = {};
-                    for (status in statuses) {
-                        allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"][statuses[status].user_id] = statuses[status];
-                    }
-                    })();
-                {% endautoescape %}
             {% endfor %}
         {% endfor %}
+        })();
 
         function createUserSocket(username) {
             const userSocket = new WebSocket(
@@ -485,13 +526,6 @@
                         armoredMessage: data["message"]
                     });
 
-                    const privateKey = await openpgp.decryptKey({
-                        privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
-                        passphrase: "{{ pass_phrase }}"
-                    });
-
-                    console.log(privateKey);
-
                     const { data: decrypted, signatures } = await openpgp.decrypt({
                         message: message,
                         decryptionKeys: privateKey,
@@ -589,6 +623,11 @@
                         }
                         preview.children[0].setAttribute("sent", "true");
                         preview.children[1].setAttribute("sent", "true");
+
+                        let chatElement = preview.parentElement;
+                        let chatList = preview.parentElement.parentElement;
+                        preview.parentElement.remove();
+                        chatList.insertBefore(chatElement, chatList.firstElementChild);
                     }
                     })();
                 } else if (data.type === "message_reached") {
@@ -1166,8 +1205,12 @@
             notificationElement.textContent = "0";
             notificationElement.classList.add("chat-notification");
 
+            const dateElement = document.createElement("span");
+            dateElement.style.display = "none";
+
             chatElement.appendChild(usernameElement);
             chatElement.appendChild(notificationElement);
+            chatElement.appendChild(dateElement);
 
             const chatPreview = document.createElement("div");
             const status = document.createElement("span");

@@ -11,7 +11,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.files.storage import default_storage
-from django.db.models import Q
+from django.db.models import Q, Subquery, Max
 from django.core.files.base import File
 
 import io
@@ -79,9 +79,10 @@ class IndexView(LoginRequiredMixin, View):
 
     @transaction.atomic
     def get(self, request, *args, **kwargs):
-        chats = Chat.objects.filter(users=self.request.user)
+        chats = Chat.objects.annotate(last_message_date=Max('messages__date')).filter(users=self.request.user).order_by('-last_message_date')
 
-        return render(context={'chats': chats, 'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE,
+        return render(context={'chats': chats,
+                               'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE,
                                'pass_phrase': self.request.user.pass_phrase,
                                'enc_private_key': self.request.user.enc_private_key,
                                'public_key': self.request.user.public_key},
@@ -153,4 +154,5 @@ class GetPublicKey(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         username = request.GET.get('username')
         user = get_user_model().objects.get(username=username)
+
         return JsonResponse({"success": True, "public_key": user.public_key})

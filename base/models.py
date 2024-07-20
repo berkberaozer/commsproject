@@ -21,7 +21,10 @@ class Chat(models.Model):
     name = models.CharField(max_length=120, null=True, blank=True)
 
     def __str__(self):
-        return ", ".join(str(user) for user in self.users.all())
+        if self.name:
+            return "Group Chat named " + self.name + "(Contains: " + ", ".join(str(user) for user in self.users.all()) + ")"
+        else:
+            return "Chat between " + " and ".join(str(user) for user in self.users.all())
 
 
 class Message(models.Model):
@@ -37,7 +40,7 @@ class Message(models.Model):
         ordering = ["date"]
 
     def __str__(self):
-        return self.source.__str__() + ": " + self.message
+        return "Message from " + self.source.__str__() + " in the " + self.chat.__str__()
 
 
 class Status(models.Model):
@@ -49,3 +52,6 @@ class Status(models.Model):
     class Meta:
         unique_together = (("message", "user"),)
         verbose_name_plural = "statuses"
+
+    def __str__(self):
+        return "Status of message " + self.message.source.__str__() + " to " + self.user.__str__() + " in " + self.message.chat.__str__()
