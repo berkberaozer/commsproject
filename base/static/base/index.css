@@ -108,17 +108,17 @@ body {
 .chat-notification {
     background-color: #25D366;
     text-wrap: wrap;
+    position: relative;
+    bottom: 2px;
     display: inline-block;
     text-align: center;
-    opacity: 0.8;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     align-content: center;
     border-radius: 50px;
     width: 14px;
-    padding: 5px;
+    padding: 3px;
     margin-left: 10px;
-    color: #343a40;
-    font-size: 12px;
+    color: black;
+    font-size: 0.8em;
 }
 
 .chat-container {
@@ -251,6 +251,7 @@ body {
     color: #fff;
     border-radius: 4px;
     border: 1px solid black;
+    text-align: center;
 }
 
 .send-button:enabled {
@@ -469,7 +470,7 @@ emoji-picker {
     font-size: 0.8em;
     color: lightgray;
     overflow: hidden !important;
-    text-overflow: ellipsis;
+    text-overflow: fade;
     block-ellipsis: auto;
     max-lines: 1;
     display: -webkit-box;
@@ -479,5 +480,18 @@ emoji-picker {
 
 .chat-element-preview span:nth-child(1) {
     letter-spacing: -0.25em;
-    margin-right: 0.25em;
+    margin-right: 0.4em;
+}
+
+.chat-element-preview span:nth-child(1):empty {
+    margin: 0;
+    width: 0;
+}
+
+.chat-element-date {
+    float: right;
+    position: relative;
+    display: inline-block;
+    font-size: 0.8em;
+    color: lightgray;
 }
