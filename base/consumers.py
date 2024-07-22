@@ -62,6 +62,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.update_read(data["message_id"], data["user_id"], True)
 
             await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"], "user_id": data["user_id"]})
+        elif message_type == "call_request":
+            await self.channel_layer.group_send(self.chat_id, {"type": "call_request", "source_username": data["source_username"], "message": data["message"]})
+        elif message_type == "call_ack":
+            await self.channel_layer.group_send(self.chat_id, {"type": "call_ack", "source_username": data["source_username"], "message": data["message"]})
+        elif message_type == "new_ice_candidate":
+            await self.channel_layer.group_send(self.chat_id, {"type": "new_ice_candidate", "message": data["message"]})
 
     async def chat_message(self, event):
         await self.send(text_data=json.dumps(event))
@@ -76,6 +82,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps(event))
 
     async def all_reached(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def call_request(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def call_ack(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def new_ice_candidate(self, event):
         await self.send(text_data=json.dumps(event))
 
     @database_sync_to_async

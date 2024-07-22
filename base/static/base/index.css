@@ -8,6 +8,7 @@ body {
     padding: 0;
     display: flex;
     background-color: #dcf8c6;
+    overflow: hidden;
 }
 
 .container {
@@ -495,4 +496,8 @@ emoji-picker {
     display: inline-block;
     font-size: 0.8em;
     color: lightgray;
+}
+
+#call-button {
+    margin-left: 10px;
 }

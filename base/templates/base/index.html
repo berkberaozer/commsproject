@@ -8,6 +8,8 @@
 </head>
 
 <body>
+<audio id="local-audio"></audio>
+<audio id="remote-audio"></audio>
     <div class="new-chat-overlay" id="new-chat-overlay" style="display: none">
         <h2 style="margin: 10px 0">New chat</h2>
         <input class="search-user-input" id="search-user-input" type="search" placeholder="Search" aria-label="Search" name="search" >
@@ -80,6 +82,9 @@
             <div class="chat-header" id="chat-header">
                 <span id="chat-header-username"></span>
                 <div id="online-icon"></div>
+                <div id="call-button" class="emoji-picker-button">
+                    <img src="{% static 'base/telephone-call.png' %}" class="sidebar-icon">
+                </div>
             </div>
             <div class="chat-messages" id="chat-messages"></div>
 
@@ -111,7 +116,7 @@
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script>
-        //makes the ajax django auth compatible by appending the django csrf token to ajax header
+        //makes the ajax django auth compatible by appending the django csrf token to ajax headers
         $.ajaxSetup({
         beforeSend: function(xhr, settings) {
              if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
@@ -169,9 +174,9 @@
             return bytes.buffer;
         }
 
-        {% if enc_private_key == None or enc_private_key == "" %}
+        {% if enc_private_key == None or enc_private_key == "" %} //if this is the first login of the user, create the key pairs
             (async () => {
-            const { privateKey, publicKey } = await openpgp.generateKey({
+            let { privateKey, publicKey } = await openpgp.generateKey({
                 type: 'ecc',
                 curve: 'curve25519',
                 userIDs: [{ name: "{{ form.username.value|default_if_none:'' }}", email: "{{ form.email.value|default_if_none:'' }}" }],
@@ -181,6 +186,7 @@
 
             sessionStorage.setItem("private_key", privateKey);
             sessionStorage.setItem("public_key", publicKey);
+            userPublicKey = publicKey;
 
             //const enc_key = await sha512("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}");
             let enc = new TextEncoder();
@@ -202,14 +208,18 @@
                 },
             }))
             })();
-        {% else %}
+        {% else %} //decrypt the private key
             (async () => {
             let enc = new TextEncoder();
             const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
             const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+
             sessionStorage.setItem("enc_key", enc_key);
             sessionStorage.setItem("enc_private_key", "{{ enc_private_key }}");
             sessionStorage.removeItem("password");
+            sessionStorage.setItem("public_key", `{{ public_key }}`);
+            userPublicKey = `{{ public_key }}`;
+
             await decryptMessage("{{ enc_private_key }}")
             })();
         {% endif %}
@@ -265,6 +275,11 @@
         const chatHeaderUsername = document.getElementById('chat-header-username');
         const chatHeaderOnline = document.getElementById('online-icon');
         const createGroupButton = document.getElementById("create-group-button");
+        const callButton = document.getElementById("call-button");
+        let voiceCall;
+        let localStream;
+        let voiceCallChatId;
+        let inCall = false;
         const chatSockets = {};
         let userSockets = {}
         let isUserOnline = {};
@@ -275,6 +290,7 @@
         let ongoingMessages = [];
         let chatUsers = {}
         let publicKeys = {}
+        let userPublicKey;
 
         let privateKey;
         (async () => {
@@ -654,6 +670,39 @@
                         if(preview && preview.hasAttribute("sent")) { preview.classList.add("blue"); }
                     }
                 }
+                else if (data.type === "call_request" || data.type === "call_ack") {
+                    if (data.type === "call_request" && data.source_username !== "{{ request.user.username }}") {
+                        if (inCall) {
+
+                        } else {
+                            //confirm(data.source_username + " calling you.")
+                            if(1) {
+                                (async () => {
+                                    voiceCall = new RTCPeerConnection();
+                                    voiceCallChatId = chat_id;
+                                    await voiceCall.setRemoteDescription(data["message"]).then(() => voiceCall.createAnswer()).then((answer) => voiceCall.setLocalDescription(answer));
+                                    voiceCall.ontrack = handleTrackEvent;
+                                    voiceCall.onicecandidate = handleICECandidateEvent;
+
+                                    sendMessage(chatSocket, "call_ack", "{{ request.user.username }}", voiceCall.localDescription);
+
+                                    await localStreamToRtc();
+                                })();
+                            } else {
+
+                            }
+                        }
+
+                    } else if (data.source_username !== "{{ request.user.username }}") {
+                        (async () => {
+                        await voiceCall.setRemoteDescription(data["message"]);
+                        })();
+                    }
+                } else if (data.type === "new_ice_candidate") {
+                    if (voiceCall.remoteDescription !== null) {
+                        voiceCall.addIceCandidate(data["message"]);
+                    }
+                }
             };
 
             chatSocket.onclose = function(e) {
@@ -667,10 +716,11 @@
             waitForSocketConnection(socket, function() {
                 if(type === 'chat_message') {
                     (async () => {
-                        let publicKeysArmored = [`{{ public_key }}`];
+                        let publicKeysArmored = [userPublicKey];
                         for (let i=0; i<chatUsers[socket.chat_id].length; i++) {
                             publicKeysArmored.push(publicKeys[chatUsers[socket.chat_id][i]]);
                         }
+                        console.log(publicKeysArmored);
                         const messageKeys = await Promise.all(publicKeysArmored.map(armoredKey => openpgp.readKey({ armoredKey })));
                         const encrypted = await openpgp.encrypt({
                             message: await openpgp.createMessage({ text: plaintext }), // input as Message object
@@ -690,6 +740,12 @@
                         'type': type,
                         'file_name': fileName,
                     }))
+                } else if (type === 'call_request' || type === 'call_ack' || type === 'new_ice_candidate') {
+                    socket.send(JSON.stringify({
+                        'source_username': identification,
+                        'type': type,
+                        'message': plaintext,
+                    }));
                 } else {
                     socket.send(JSON.stringify({
                         'message_id': identification,
@@ -920,6 +976,15 @@
                     let flag = true;
                     let unread = false;
                     let currentDateIndicator = new Date(messages[0].date);
+
+                    //group creation indicator needs to know group creation date
+                    /* let chatElement = document.querySelector(".chat[chat-id='" + chatId + "']");
+                    if (chatElement.hasAttribute("group")) {
+                        let groupCreationIndicator = document.createElement("div");
+                        groupCreationIndicator.classList.add("messageDate");
+                        groupCreationIndicator.textContent = "Group created";
+                        chatMessages.appendChild(groupCreationIndicator);
+                    } */
 
                     for (let i = 0; i < messages.length; i++) {
                         const date = new Date(messages[i].date + " UTC");
@@ -1596,11 +1661,11 @@
                 let fr = new FileReader();
                 fr.onloadend = function() {
                     (async () => {
-                        let publicKeysArmored = [`{{ public_key }}`];
+                        let publicKeysArmored = [userPublicKey];
                         for (let i = 0; i < chatUsers[activeChatId].length; i++) {
                             publicKeysArmored.push(publicKeys[chatUsers[activeChatId][i]]);
                         }
-                        const messageKeys = await Promise.all(publicKeysArmored.map(armoredKey => openpgp.readKey({armoredKey})));
+                        const messageKeys = await Promise.all(publicKeysArmored.map(key => openpgp.readKey({armoredKey: key})));
                         const encrypted = await openpgp.encrypt({
                             message: await openpgp.createMessage({text: fr.result}),
                             encryptionKeys: messageKeys,
@@ -1628,6 +1693,59 @@
                 alert("File size should be less than 20 MBs.");
             }
         })
+
+        callButton.addEventListener('click', async function (event) {
+            const activeChat = document.querySelector('.chat-list li.active');
+
+            if (!inCall) {
+                voiceCall = new RTCPeerConnection();
+                await voiceCall.createOffer({offerToReceiveAudio: true}).then(o => voiceCall.setLocalDescription(o));
+                voiceCallChatId = activeChat.getAttribute("chat-id");
+
+                voiceCall.ontrack = handleTrackEvent;
+                voiceCall.onicecandidate = handleICECandidateEvent;
+
+                sendMessage(chatSockets[activeChat.getAttribute("chat-id")], "call_request", "{{ request.user.username }}", voiceCall.localDescription);
+                await localStreamToRtc();
+            }
+        })
+
+        function handleSendChannelStatusChange() {
+
+        }
+
+        async function localStreamToRtc() {
+            await navigator.mediaDevices
+                .getUserMedia({video: false, audio: true})
+                .then((stream) => {
+                    localStream = stream;
+                    document.getElementById("local-audio").srcObject = stream;
+                    document.getElementById("local-audio").autoplay = true;
+                })
+                .catch((err) => {
+                    console.error(`you got an error: ${err}`);
+                });
+
+            let transceiver;
+            try {
+                localStream.getTracks().forEach(transceiver = track => voiceCall.addTransceiver(track, {streams: [localStream]})
+                );
+            } catch (err) {
+                console.error(`you got an error: ${err}`);
+            }
+        }
+
+        function handleTrackEvent(event) {
+          console.log("*** Track event");
+          document.getElementById("remote-audio").srcObject = event.streams[0];
+          document.getElementById("remote-audio").autoplay = true;
+        }
+
+        function handleICECandidateEvent(event) {
+          if (event.candidate) {
+            sendMessage(chatSockets[voiceCallChatId], "new_ice_candidate", "{{ request.user.username }}", event.candidate);
+          }
+        }
 
         emojiPicker.addEventListener('emoji-click', event => messageInput.value = messageInput.value + event["detail"]["unicode"]);
     </script>
