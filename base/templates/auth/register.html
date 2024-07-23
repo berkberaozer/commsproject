@@ -3,7 +3,6 @@
 <head>
     <title>Register</title>
     <link rel="stylesheet" href="{% static 'base/login.css' %}">
-    <script src="https://unpkg.com/openpgp@5.11.2/dist/openpgp.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -16,8 +15,9 @@
                 <button type="submit" id="register">Register</button>
             </form>
         {% endif %}
+
         <form action="{% url 'base:login' %}">
-            <button type="submit">Get Back</button>
+            <button type="submit" style="margin: auto">Get Back</button>
         </form>
     </div>
 </body>

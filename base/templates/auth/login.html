@@ -7,11 +7,13 @@
 <body>
     <div class="container">
         <h2>Login</h2>
+
         <form id="login" method="post">
             {% csrf_token %}
             {{ form.as_p }}
             <button type="submit">Login</button>
         </form>
+
         <form action="{% url 'base:register' %}">
             <button type="submit">Register</button>
         </form>
@@ -22,4 +24,5 @@
         sessionStorage.setItem("password", document.getElementById("id_password").value);
     })
 </script>
+
 </body>

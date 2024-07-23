@@ -1,7 +1,6 @@
-from django.contrib.messages.context_processors import messages
 from django.db import transaction
 from django.shortcuts import render
-from django.http import HttpResponseRedirect, JsonResponse, HttpResponse
+from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -11,7 +10,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.files.storage import default_storage
-from django.db.models import Q, Subquery, Max
+from django.db.models import Q, Max
 from django.core.files.base import File
 
 import io
@@ -67,9 +66,7 @@ class RegisterView(View):
                                                  first_name=form['first_name'],
                                                  last_name=form['last_name'], pass_phrase=pass_phrase)
 
-            return render(request, self.template_name,
-                          {'form': form, 'register': True, 'pass_phrase': pass_phrase, 'username': form['username'],
-                           'email': form['email']})
+            return render(request, self.template_name, {'form': form, 'register': True})
         else:
             return render(request, self.template_name, {'form': form})
 
@@ -79,7 +76,8 @@ class IndexView(LoginRequiredMixin, View):
 
     @transaction.atomic
     def get(self, request, *args, **kwargs):
-        chats = Chat.objects.annotate(last_message_date=Max('messages__date')).filter(users=self.request.user).order_by('-last_message_date')
+        chats = Chat.objects.annotate(last_message_date=Max('messages__date')).filter(
+            users=self.request.user).order_by('-last_message_date')
 
         return render(context={'chats': chats,
                                'DATA_UPLOAD_MAX_MEMORY_SIZE': DATA_UPLOAD_MAX_MEMORY_SIZE,
@@ -119,7 +117,6 @@ class CreateChat(LoginRequiredMixin, View):
 
             return JsonResponse({"chat_id": chat.id, "success": True})
         else:
-            print(request.POST.get('users'))
             return JsonResponse({"success": False})
 
 
@@ -129,7 +126,7 @@ class UploadFile(LoginRequiredMixin, View):
         date = timezone.now()
         file = File(file=io.BytesIO(request.body),
                     name=request.user.username + "-" + str(date.timestamp()) + guess_extension(
-                        self.request.content_type))
+                                                                                self.request.content_type))
         file_name = default_storage.save(file.name, file)
         file_url = default_storage.url(file_name)
 

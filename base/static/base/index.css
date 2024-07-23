@@ -504,7 +504,7 @@ emoji-picker {
     margin-right: 0;
 }
 
-#voice-call {
+#voice-call-overlay {
     position: fixed;
     height: fit-content;
     width: fit-content;
@@ -520,6 +520,7 @@ emoji-picker {
     text-align: center;
     font-size: 1em;
     padding: 20px;
+    padding-bottom: 5px;
 }
 
 .voice-call-button {

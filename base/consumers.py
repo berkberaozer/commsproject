@@ -105,9 +105,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def create_message(self, source_username, message):
         date = timezone.now()
-        source = get_user_model().objects.filter(username=source_username)[0]
+        source = get_user_model().objects.get(username=source_username)
         message = Message.objects.create(source=source, message=message,
                                          date=date, chat=Chat.objects.get(id=self.chat_id))
+
+        # creates a status for each of the recipients
         for user in Chat.objects.get(id=self.chat_id).users.exclude(username=source_username).all():
             Status.objects.create(user=user, message=message)
 
@@ -116,9 +118,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def create_file_message(self, source_username, message, file_name):
         date = timezone.now()
-        message = Message.objects.create(source=get_user_model().objects.get(username=source_username),
-                                         message=message, date=date,
+        source = get_user_model().objects.get(username=source_username)
+        message = Message.objects.create(source=source, message=message, date=date,
                                          chat=Chat.objects.get(id=self.chat_id), file_name=file_name)
+
+        # creates a status for each of the recipients
         for user in Chat.objects.get(id=self.chat_id).users.exclude(username=source_username).all():
             Status.objects.create(user=user, message=message)
 
@@ -139,15 +143,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         status.save()
 
         return status
-
-    @database_sync_to_async
-    def all_statuses_reached(self, message_id):
-        statuses = Status.objects.filter(message_id=message_id).values("has_reached")
-
-        for status in statuses.iterator():
-            if not status["has_reached"]:
-                return False
-        return True
 
     @database_sync_to_async
     def get_statuses(self, message):
@@ -175,6 +170,7 @@ class UserConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         if self.username == self.scope["user"].username:
             await self.update_online(False)
+
             await self.channel_layer.group_send(self.username, {"type": "is_online", "value": False})
 
         await self.channel_layer.group_discard(self.username, self.channel_name)
@@ -185,12 +181,14 @@ class UserConsumer(AsyncWebsocketConsumer):
         if data["type"] == "chat_creation":
             source_username = data["source_username"]
             chat_id = data["chat_id"]
+
             await self.channel_layer.group_send(
                 self.username, {"type": "chat_creation", "source_username": source_username, "chat_id": chat_id}
             )
         elif data["type"] == "chat_creation_ack":
             source_username = data["source_username"]
             chat_id = data["chat_id"]
+
             await self.channel_layer.group_send(
                 self.username, {"type": "chat_creation_ack", "chat_id": chat_id, "source_username": source_username}
             )
@@ -203,28 +201,20 @@ class UserConsumer(AsyncWebsocketConsumer):
                 self.username, {"type": "group_creation",
                                 "chat_id": data["chat_id"],
                                 "name": data["name"],
+                                "users": data["users"],
                                 "source_username": data["source_username"]})
 
     async def chat_creation(self, event):
-        source_username = event["source_username"]
-        chat_id = event["chat_id"]
-        message_type = event["type"]
-
-        await self.send(
-            text_data=json.dumps({"type": message_type, "source_username": source_username, "chat_id": chat_id})
-        )
+        await self.send(text_data=json.dumps(event))
 
     async def chat_creation_ack(self, event):
-        await self.send(text_data=json.dumps(
-            {"type": event["type"], "chat_id": event["chat_id"], "source_username": event["source_username"]}))
+        await self.send(text_data=json.dumps(event))
 
     async def group_creation(self, event):
-        await self.send(text_data=json.dumps(
-            {"type": event["type"], "chat_id": event["chat_id"],
-             "name": event["name"], "source_username": event["source_username"]}))
+        await self.send(text_data=json.dumps(event))
 
     async def is_online(self, event):
-        await self.send(text_data=json.dumps({"type": event["type"], "value": event["value"]}))
+        await self.send(text_data=json.dumps(event))
 
     @database_sync_to_async
     def update_online(self, boolean):
@@ -232,4 +222,4 @@ class UserConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_online(self):
-        return list(get_user_model().objects.filter(username=self.username).values('online'))[0]["online"]
+        return get_user_model().objects.filter(username=self.username).values('online')[0]["online"]

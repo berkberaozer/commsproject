@@ -11,6 +11,8 @@
     align-content: center;
     padding: 20px;
     margin: auto auto;
+    align-items: center;
+    text-align: center;
 }
 
 .container * {

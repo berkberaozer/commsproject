@@ -1,9 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-from django.db.models.constraints import UniqueConstraint
-
-
-# Create your models here.
 
 
 class User(AbstractUser):
@@ -22,7 +18,7 @@ class Chat(models.Model):
 
     def __str__(self):
         if self.name:
-            return "Group Chat named " + self.name + "(Contains: " + ", ".join(str(user) for user in self.users.all()) + ")"
+            return "Group Chat " + self.name + "(Contains: " + ", ".join(str(user) for user in self.users.all()) + ")"
         else:
             return "Chat between " + " and ".join(str(user) for user in self.users.all())
 
@@ -30,7 +26,7 @@ class Chat(models.Model):
 class Message(models.Model):
     source = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_messages")
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
-    targets = models.ManyToManyField(User, through="Status", related_name="received_messages", )
+    targets = models.ManyToManyField(User, through="Status", related_name="received_messages")
     message = models.TextField()
     date = models.DateTimeField()
     has_sent = models.BooleanField(default=True)

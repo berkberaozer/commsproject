@@ -7,10 +7,7 @@
 </head>
 <body>
     <audio id="remote-audio"></audio>
-
-    <div id="voice-call">
-
-    </div>
+    <div id="voice-call-overlay"></div>
 
     <div class="new-chat-overlay" id="new-chat-overlay" style="display: none">
         <h2 style="margin: 10px 0">New chat</h2>
@@ -151,6 +148,7 @@
             return await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, enc_key, encoded).then(x => sessionStorage.setItem("enc_private_key", _arrayBufferToBase64(x)));
         }
 
+        //reverse of the encryptPrivateKey
         async function decryptPrivateKey(ciphertext) {
             let enc = new TextEncoder();
             let dec = new TextDecoder();
@@ -192,6 +190,7 @@
             });
 
             sessionStorage.setItem("private_key", privateKey);
+            userPrivateKey = privateKey;
             userPublicKey = publicKey;
 
             let enc = new TextEncoder();
@@ -205,22 +204,14 @@
                 type: "POST",
                 url: "{% url 'base:set_credentials' %}",
                 data: {
-                    "public_key": sessionStorage.getItem("public_key"),
+                    "public_key": userPublicKey,
                     "enc_private_key": sessionStorage.getItem("enc_private_key"),
                 },
                 dataType: "json",
                 success: function (data) {
                 },
-            }))
+            })).then(x=> window.location.reload())
             })();
-        {% else %} //decrypt the encrypted private key served by the server
-            //(async () => {
-            //await decryptPrivateKey("{{ enc_private_key }}").then(async x => privateKey = await openpgp.decryptKey({
-            //    privateKey: await openpgp.readPrivateKey({armoredKey: sessionStorage.getItem("private_key")}),
-            //    passphrase: "{{ pass_phrase }}"
-            //}))
-            //})();
-            // decryptPrivateKey("{{ enc_private_key }}");
         {% endif %}
 
         function getCookie(name) {
@@ -259,7 +250,7 @@
         const chatHeaderUsername = document.getElementById('chat-header-username');
         const chatHeaderOnline = document.getElementById('online-icon');
         const callButton = document.getElementById("call-button");
-        const voiceCallOverlay = document.getElementById("voice-call");
+        const voiceCallOverlay = document.getElementById("voice-call-overlay");
         const createGroupButton = document.getElementById("create-group-button");
         let voiceCall;
         let localStream;
@@ -278,12 +269,9 @@
         let userPublicKey = `{{ public_key }}`;
         let userPrivateKey;
 
+        //initializations from the database
         (async () => {
             await (async () => {
-                let enc = new TextEncoder();
-                const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
-                const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
-                sessionStorage.removeItem("password");
                 await decryptPrivateKey("{{ enc_private_key }}")
 
                 userPrivateKey = await openpgp.decryptKey({
@@ -400,8 +388,6 @@
                 }
             {% endfor %}
         {% endfor %}
-
-
         })();
 
         function createUserSocket(username) {
@@ -421,6 +407,7 @@
                     const username = JSON.parse(e["data"])["source_username"];
                     const newChat = document.querySelector(".chat[chat-id='undefined']");
 
+                    //creates the chat element
                     if (newChat == null || newChat.firstElementChild.textContent !==  username) {
                         const chatList = document.getElementById("chat-list");
                         const chatElement = getChatElement(chat_id, username)
@@ -429,6 +416,16 @@
                         if (data["type"] === "group_creation") {
                             chatElement.setAttribute("group", "true");
                             chatElement.firstElementChild.textContent = data["name"];
+                            let users = [username];
+
+                            for(let i=0;i<data.users.length;i++) {
+                                if(data.users[i] !== "{{ request.user.username }}") {
+                                    users.push(data.users[i]);
+                                }
+                            }
+                            chatUsers[chat_id] = users;
+                        } else {
+                            chatUsers[chat_id] = [username];
                         }
 
                         chatList.insertBefore(chatElement, chatList.firstElementChild);
@@ -446,12 +443,31 @@
                     }
                     createChatSocket(chat_id);
 
+                    //querying public keys of the chat users
+                    for (user in chatUsers[chat_id]) {
+                        let username = chatUsers[chat_id][user];
+                            if (!(username in publicKeys)) {
+                                $.ajax({
+                                type: "GET",
+                                url: "{% url 'base:get_public_key' %}",
+                                data: {
+                                    "username": username
+                                },
+                                dataType: "json",
+                                success: function (data) {
+                                    publicKeys[username] = data["public_key"];
+                                },
+                            })
+                        }
+                    }
+
                     if(data["type"] === "chat_creation") {
                         sendChatCreationAckMessage(this, chat_id, '{{ request.user.username }}', chatSockets[chat_id]);
                     }
 
                     allMessages[chat_id] = [];
                 } else if ("{{ request.user.username }}" !== data["source_username"] && data["type"] === "chat_creation_ack") {
+                    //recipient user successfully created the chat socket, send the messages in the queue
                     for (let i = 0; i < ongoingMessages.length; i++) {
                         if (parseInt(ongoingMessages[i]["chat_id"]) === data["chat_id"]) {
                             sendMessage(chatSockets[ongoingMessages[i]["chat_id"]], 'chat_message', ongoingMessages[i]["source_username"], ongoingMessages[i]["message"]);
@@ -459,7 +475,7 @@
                         }
                     }
                 }
-                else if (data["type"] === "is_online") {
+                else if (data["type"] === "is_online") { //online status change
                     isUserOnline[username] = data["value"];
 
                     const activeChat = document.querySelector('.chat-list li.active');
@@ -510,20 +526,16 @@
                     }
                     data.statuses = dict;
 
-
                     const viewingOlderMessages = chatMessages.scrollTop + chatMessages.clientHeight + 30 < chatMessages.scrollHeight;
-                    if (!(data["chat_id"] in allMessages)) {
+
+                    if (!(data["chat_id"] in allMessages)) { //first message of the chat
                         allMessages[data["chat_id"]] = [];
                     }
 
                     if (data.type === 'chat_message' || data.type === 'chat_file') {
-                        const message = await openpgp.readMessage({
-                            armoredMessage: data["message"]
-                        });
-
-                        const { data: decrypted } = await openpgp.decrypt({
-                            message: message,
-                            decryptionKeys: userPrivateKey,
+                        let { data: decrypted } = await openpgp.decrypt({
+                            message: await openpgp.readMessage({armoredMessage: data["message"] }),
+                            decryptionKeys: userPrivateKey
                         });
                         data["message"] = decrypted;
                     }
@@ -554,9 +566,11 @@
                             chatMessages.appendChild(getMessageElement(data, 0));
                         }
 
+                        //chat list message preview time change
                         let date = new Date(data["date"] + " UTC");
                         targetChat.children[2].textContent = date.toLocaleTimeString('en-GB', { hour: "numeric", minute: "numeric"});
 
+                        //if user viewing older messages, don't scroll to the bottom, increase the notifications
                         if (viewingOlderMessages && data["source_username"] !== "{{ request.user.username }}") {
                             goBottomNotification.textContent = parseInt(goBottomNotification.textContent) + 1 + "";
                             if(goBottomNotification.style.display === "none") {
@@ -594,9 +608,9 @@
                     preview.children[1].removeAttribute("sent");
                     preview.children[1].removeAttribute("received");
 
-                    //if this user is the receiving end, notify the sender that message is reached
+                    //updates message previews
                     if(data["source_username"] !== "{{ request.user.username }}") {
-                        sendMessage(this, "message_reached", data.message_id);
+                        sendMessage(this, "message_reached", data.message_id); //if this user is the receiving end, notify the sender that message is reached
                         if (targetChat.hasAttribute("group")) {
                             if (data.type === 'chat_file') {
                                 preview.children[1].textContent = data.source_username + ":\xa0" + data.file_name;
@@ -623,6 +637,7 @@
                         preview.children[1].setAttribute("sent", "true");
                     }
 
+                    //new messages should move the chat element up in the list
                     let chatElement = preview.parentElement;
                     let chatList = preview.parentElement.parentElement;
                     preview.parentElement.remove();
@@ -657,9 +672,9 @@
                 else if (data.type === "call_request" || data.type === "call_ack") {
                     if (data.type === "call_request" && data.source_username !== "{{ request.user.username }}") {
                         if (inCall) {
-
+                            sendMessage(chatSocket, "call_hangup");
                         } else {
-                            beep();
+                            ring();
                             voiceCallOverlay.style.display = "block";
                             voiceCallOverlay.innerHTML = "";
                             let text = document.createElement("span");
@@ -705,16 +720,17 @@
                                 inCall = false;
                             })
                         }
-                    } else if (data.source_username !== "{{ request.user.username }}") {
+                    } else if (data.source_username !== "{{ request.user.username }}") { //call-ack received
                         inCall = true;
                         voiceCallChatId = chat_id;
+
                         (async () => {
                         await voiceCall.setRemoteDescription(data["message"]);
 
                         let stream = new MediaStream();
                         stream.addTrack(voiceCall.getReceivers()[0].track);
 
-                        document.getElementById("remote-audio").srcObject = stream;
+                        document.getElementById("remote-audio").srcObject = stream; //play the remote media stream
                         document.getElementById("remote-audio").autoplay = true;
 
                         voiceCallOverlay.style.display = "block";
@@ -731,6 +747,10 @@
                         voiceCall.close();
                         voiceCallOverlay.style.display = "none";
                         voiceCallOverlay.innerHTML = "";
+                        inCall = false;
+                    } {
+                        voiceCallOverlay.style.display = "none";
+                        voiceCallOverlay.innerHTML = "";
                     }
                 }
             };
@@ -743,7 +763,7 @@
         }
 
         function runTimer(timer) {
-            var x = setInterval(function() {
+            let x = setInterval(function() {
                 if(inCall) {
                     let seconds = parseInt(timer.textContent.split(":")[1]);
                     let minutes = parseInt(timer.textContent.split(":")[0]);
@@ -754,6 +774,8 @@
                         minutes += 1;
                     }
                     timer.textContent = (minutes < 10? '0' + minutes : minutes) + ":" + (seconds < 10? '0' + seconds : seconds);
+                } else {
+                    clearInterval(x);
                 }
             }, 1000);
         }
@@ -889,7 +911,7 @@
                 }, 5)
         }
 
-        function getDateElement(date) {
+        function getDateElement(date) { //returns the in-chat date indicator
             const now = new Date();
             const weekBefore = new Date();
             weekBefore.setDate(weekBefore.getDate() - 6)
@@ -971,7 +993,7 @@
 
             let content;
             let extension;
-            if (message.file_name !== "None" && message.file_name) {
+            if (message.file_name !== "None" && message.file_name) { //if message is file
                 let re = /(?:\.([^.]+))?$/;
                 extension = re.exec(message.file_name)[1];
 
@@ -995,8 +1017,9 @@
                 }
                 messageText.appendChild(content);
             }
-            else if (message.message.length > 1200) {
+            else if (message.message.length > 1200) { //if message length is bigger than 1200 characters, add read more button
                 messageText.textContent = message.message.substring(0, (paging + 1) * 1200);
+
                 if (message.message.length > (paging + 1) * 1200) {
                     let readMore = document.createElement('p');
                     readMore.classList.add("read-more");
@@ -1114,7 +1137,7 @@
 
                     const firstUnread = document.querySelector('.message.received[has_read="false"]');
 
-                    if(firstUnread != null) {
+                    if(firstUnread != null) { //scroll to the first unread message
                         chatMessages.scrollTo({top: firstUnread.offsetTop - chatMessages.clientHeight / 2, behavior: "instant"});
                         goBottomButton.style.display = "block";
                         goBottomNotification.style.display = "block";
@@ -1666,6 +1689,7 @@
                             'chat_id': chat_id,
                             'name': name,
                             'type': 'group_creation',
+                            'users': users,
                             'source_username': '{{ request.user.username }}',
                         }));
                     }
@@ -1802,44 +1826,43 @@
                 voiceCall.onicecandidate = handleICECandidateEvent;
 
                 sendMessage(chatSockets[activeChat.getAttribute("chat-id")], "call_request", "{{ request.user.username }}", voiceCall.localDescription);
+                setVoiceCallOverlay("", voiceCallChatId);
+                voiceCallOverlay.children[1].remove();
+                voiceCallOverlay.children[0].textContent = "Calling " + activeChat.firstElementChild.textContent;
+                voiceCallOverlay.style.display = "block";
             }
         })
 
-        function handleSendChannelStatusChange() {
-
-        }
-
-        function beep() {
-            let snd = new Audio("{% static 'base/telephone-ring.wav' %}")
-            snd.currentTime = 0;
-            snd.autoplay = true;
-            snd.play();
+        function ring() {
+            let ring = new Audio("{% static 'base/telephone-ring.wav' %}")
+            ring.currentTime = 0;
+            ring.autoplay = true;
+            ring.play();
         }
 
         async function localStreamToRtc() {
             await navigator.mediaDevices
                 .getUserMedia({video: false, audio: {
-                autoGainControl: false,
-                channelCount: 2,
-                echoCancellation: false,
-                latency: 0,
-                noiseSuppression: false,
-                sampleRate: 48000,
-                sampleSize: 16,
-                volume: 1.0
-              }})
+                                autoGainControl: false,
+                                channelCount: 2,
+                                echoCancellation: false,
+                                latency: 0,
+                                noiseSuppression: false,
+                                sampleRate: 48000,
+                                sampleSize: 16,
+                                volume: 1.0 }})
                 .then((stream) => {
                     localStream = stream;
                 })
                 .catch((err) => {
-                    console.error(`you got an error: ${err}`);
+                    console.error(`Error: ${err}`);
                 });
 
             try {
                 localStream.getTracks().forEach(track => voiceCall.addTrack(track, localStream)
                 );
             } catch (err) {
-                console.error(`you got an error: ${err}`);
+                console.error(`Error: ${err}`);
             }
         }
 
