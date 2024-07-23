@@ -1,8 +1,6 @@
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
-from django.core import serializers
-from django.db.models import Q
 from django.utils import timezone
 
 from .models import Chat, Message, Status
@@ -57,17 +55,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
         elif message_type == "message_reached":
             await self.update_reached(data["message_id"], data["user_id"], True)
 
-            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"], "user_id": data["user_id"]})
+            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"],
+                                                               "user_id": data["user_id"]})
         elif message_type == "message_read":
             await self.update_read(data["message_id"], data["user_id"], True)
 
-            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"], "user_id": data["user_id"]})
+            await self.channel_layer.group_send(self.chat_id, {"type": message_type, "message_id": data["message_id"],
+                                                               "user_id": data["user_id"]})
         elif message_type == "call_request":
-            await self.channel_layer.group_send(self.chat_id, {"type": "call_request", "source_username": data["source_username"], "message": data["message"]})
+            await self.channel_layer.group_send(self.chat_id, {"type": "call_request",
+                                                               "source_username": data["source_username"],
+                                                               "message": data["message"]})
         elif message_type == "call_ack":
-            await self.channel_layer.group_send(self.chat_id, {"type": "call_ack", "source_username": data["source_username"], "message": data["message"]})
+            await self.channel_layer.group_send(self.chat_id, {"type": "call_ack",
+                                                               "source_username": data["source_username"],
+                                                               "message": data["message"]})
         elif message_type == "new_ice_candidate":
             await self.channel_layer.group_send(self.chat_id, {"type": "new_ice_candidate", "message": data["message"]})
+        elif message_type == "call_hangup":
+            await self.channel_layer.group_send(self.chat_id, {"type": "call_hangup"})
 
     async def chat_message(self, event):
         await self.send(text_data=json.dumps(event))
@@ -88,6 +94,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps(event))
 
     async def call_ack(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def call_hangup(self, event):
         await self.send(text_data=json.dumps(event))
 
     async def new_ice_candidate(self, event):

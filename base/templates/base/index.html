@@ -1,15 +1,17 @@
 {% load static %}
 <head>
-    <title>Comms</title>
+    <title>Comms Project</title>
     <link rel="stylesheet" href="{% static 'base/index.css' %}">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
     <script src="https://unpkg.com/openpgp@5.11.2/dist/openpgp.min.js"></script>
-
 </head>
-
 <body>
-<audio id="local-audio"></audio>
-<audio id="remote-audio"></audio>
+    <audio id="remote-audio"></audio>
+
+    <div id="voice-call">
+
+    </div>
+
     <div class="new-chat-overlay" id="new-chat-overlay" style="display: none">
         <h2 style="margin: 10px 0">New chat</h2>
         <input class="search-user-input" id="search-user-input" type="search" placeholder="Search" aria-label="Search" name="search" >
@@ -30,11 +32,13 @@
             <ul id="group-users-list" class="chat-list" style="border-bottom-color: white"></ul>
             <span style="visibility: hidden">No Users!</span>
         </div>
+
         <div style="width: 100%; height: 2px; background-color: white"></div>
         <div class="selected-users">
             <ul id="selected-users-list" class="chat-list"></ul>
             <span style="visibility: hidden">No Users!</span>
         </div>
+
         <div style="display: flex; gap: 3px; position: absolute; bottom: 10px; left: 2.5%; width: 95%;">
             <input class="search-user-input" id="group-name-input" style="margin: 0" type="text" placeholder="Group name" aria-label="Group name" name="name" >
             <button class="send-button" id="create-group-button" type="submit">Create</button>
@@ -43,11 +47,12 @@
 
     <div class="container">
         <div class="sidebar">
-        <div id="logout-button"><img src="{% static 'base/logout.png' %}" class="sidebar-icon" alt="Logout"></div>
-        <form action="{% url 'base:logout' %}" method="post" id="logout-form">
-            {% csrf_token %}
-        </form>
-    </div>
+            <div id="logout-button"><img src="{% static 'base/logout.png' %}" class="sidebar-icon" alt="Logout"></div>
+            <form action="{% url 'base:logout' %}" method="post" id="logout-form">
+                {% csrf_token %}
+            </form>
+        </div>
+
         <div class="chat-list-container">
             <div class="chat-list-header">
                 <h2 style="float: left; margin-left: 5px">Chats</h2>
@@ -83,7 +88,7 @@
                 <span id="chat-header-username"></span>
                 <div id="online-icon"></div>
                 <div id="call-button" class="emoji-picker-button">
-                    <img src="{% static 'base/telephone-call.png' %}" class="sidebar-icon">
+                    <img src="{% static 'base/telephone-call.png' %}" class="sidebar-icon" alt="Voice Call">
                 </div>
             </div>
             <div class="chat-messages" id="chat-messages"></div>
@@ -131,9 +136,11 @@
           });
         }
 
-        async function encryptMessage(plaintext) {
+        //encrypts the private key.
+        //first, it creates a derivation key from the user password, username and server-side generated salt by PBKDF2.
+        //then using this key, it creates AES-GCM compatible encryption key by using PBKDF2 again.
+        async function encryptPrivateKey(plaintext) {
             let enc = new TextEncoder();
-            let dec = new TextDecoder();
             let iv = new Uint8Array(16);
 
             const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
@@ -141,10 +148,10 @@
 
             let encoded = enc.encode(plaintext);
 
-            return window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, enc_key, encoded).then(x => sessionStorage.setItem("enc_private_key", _arrayBufferToBase64(x)));
+            return await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, enc_key, encoded).then(x => sessionStorage.setItem("enc_private_key", _arrayBufferToBase64(x)));
         }
 
-        async function decryptMessage(ciphertext) {
+        async function decryptPrivateKey(ciphertext) {
             let enc = new TextEncoder();
             let dec = new TextDecoder();
             let iv = new Uint8Array(16);
@@ -152,29 +159,29 @@
             const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
             const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
 
-            await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, enc_key, _base64ToArrayBuffer(ciphertext)).then(x => sessionStorage.setItem("private_key", dec.decode(x))).catch(e => console.log(e));
+            await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, enc_key, _base64ToArrayBuffer(ciphertext)).then(x => sessionStorage.setItem("private_key", dec.decode(x)));
         }
 
         function _arrayBufferToBase64( buffer ) {
-            var binary = '';
-            var bytes = new Uint8Array( buffer );
-            var len = bytes.byteLength;
-            for (var i = 0; i < len; i++) {
+            let binary = '';
+            let bytes = new Uint8Array( buffer );
+            let len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
                 binary += String.fromCharCode( bytes[ i ] );
             }
             return window.btoa( binary );
         }
 
         function _base64ToArrayBuffer(base64) {
-            var binaryString = atob(base64);
-            var bytes = new Uint8Array(binaryString.length);
-            for (var i = 0; i < binaryString.length; i++) {
+            let binaryString = atob(base64);
+            let bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
             }
             return bytes.buffer;
         }
 
-        {% if enc_private_key == None or enc_private_key == "" %} //if this is the first login of the user, create the key pairs
+        {% if enc_private_key == None or enc_private_key == "" %} //if this is the first login of the user, create the key pair
             (async () => {
             let { privateKey, publicKey } = await openpgp.generateKey({
                 type: 'ecc',
@@ -185,10 +192,8 @@
             });
 
             sessionStorage.setItem("private_key", privateKey);
-            sessionStorage.setItem("public_key", publicKey);
             userPublicKey = publicKey;
 
-            //const enc_key = await sha512("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}");
             let enc = new TextEncoder();
             const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
             const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
@@ -196,7 +201,7 @@
             sessionStorage.setItem("enc_key", enc_key.toString());
             sessionStorage.removeItem("password");
 
-            await encryptMessage(sessionStorage.getItem("private_key")).then(x => $.ajax({
+            await encryptPrivateKey(sessionStorage.getItem("private_key")).then(x => $.ajax({
                 type: "POST",
                 url: "{% url 'base:set_credentials' %}",
                 data: {
@@ -208,36 +213,15 @@
                 },
             }))
             })();
-        {% else %} //decrypt the private key
-            (async () => {
-            let enc = new TextEncoder();
-            const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
-            const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
-
-            sessionStorage.setItem("enc_key", enc_key);
-            sessionStorage.setItem("enc_private_key", "{{ enc_private_key }}");
-            sessionStorage.removeItem("password");
-            sessionStorage.setItem("public_key", `{{ public_key }}`);
-            userPublicKey = `{{ public_key }}`;
-
-            await decryptMessage("{{ enc_private_key }}")
-            })();
+        {% else %} //decrypt the encrypted private key served by the server
+            //(async () => {
+            //await decryptPrivateKey("{{ enc_private_key }}").then(async x => privateKey = await openpgp.decryptKey({
+            //    privateKey: await openpgp.readPrivateKey({armoredKey: sessionStorage.getItem("private_key")}),
+            //    passphrase: "{{ pass_phrase }}"
+            //}))
+            //})();
+            // decryptPrivateKey("{{ enc_private_key }}");
         {% endif %}
-
-        function setAdminKeys() {
-            (async () => {
-                const { privateKey, publicKey } = await openpgp.generateKey({
-                    type: 'ecc',
-                    curve: 'curve25519',
-                    userIDs: [{ name: "{{ request.user.username }}", email: "{{ request.user.email }}" }],
-                    passphrase:  "12345",
-                    format: 'armored'
-                });
-
-                localStorage.setItem("admin_private_key", privateKey);
-                localStorage.setItem("admin_public_key", publicKey);
-            })();
-        }
 
         function getCookie(name) {
              let cookieValue = null;
@@ -274,8 +258,9 @@
         const chatHeader = document.getElementById('chat-header');
         const chatHeaderUsername = document.getElementById('chat-header-username');
         const chatHeaderOnline = document.getElementById('online-icon');
-        const createGroupButton = document.getElementById("create-group-button");
         const callButton = document.getElementById("call-button");
+        const voiceCallOverlay = document.getElementById("voice-call");
+        const createGroupButton = document.getElementById("create-group-button");
         let voiceCall;
         let localStream;
         let voiceCallChatId;
@@ -290,20 +275,18 @@
         let ongoingMessages = [];
         let chatUsers = {}
         let publicKeys = {}
-        let userPublicKey;
+        let userPublicKey = `{{ public_key }}`;
+        let userPrivateKey;
 
-        let privateKey;
         (async () => {
             await (async () => {
                 let enc = new TextEncoder();
                 const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
                 const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
-                sessionStorage.setItem("enc_key", enc_key);
-                sessionStorage.setItem("enc_private_key", "{{ enc_private_key }}");
                 sessionStorage.removeItem("password");
-                await decryptMessage("{{ enc_private_key }}")
+                await decryptPrivateKey("{{ enc_private_key }}")
 
-                privateKey = await openpgp.decryptKey({
+                userPrivateKey = await openpgp.decryptKey({
                     privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
                     passphrase: "{{ pass_phrase }}"
                 });
@@ -327,25 +310,25 @@
                 if (!({{ message.chat_id }} in allMessages)) {
                          allMessages[{{ message.chat_id }}] = [];
                 }
-                let { data: decrypted, signatures } = await openpgp.decrypt({
+
+                let { data: decrypted } = await openpgp.decrypt({
                     message: await openpgp.readMessage({armoredMessage: `{{ message.message }}` }),
-                    decryptionKeys: privateKey
+                    decryptionKeys: userPrivateKey
                 });
                 allMessages[{{ message.chat_id }}].push({'message_id': {{ message.id }}, 'source_username': "{{ message.source.username }}", 'message': decrypted, 'date': '{{ message.date|date:"D, d M Y H:i:s" }}', 'chat_id': {{ message.chat_id }}, 'has_sent': {{ message.has_sent|yesno:"true,false" }}, 'file_name': '{{ message.file_name }}'});
 
-
                 {% autoescape off %}
-                messageStatuses = "{{ message.statuses.all.values }}"
+                let messageStatuses = "{{ message.statuses.all.values }}"
                 messageStatuses = messageStatuses.split("[")[1].split("]")[0];
 
                 messageStatuses = "[" + messageStatuses + "]"
                 messageStatuses = messageStatuses.replaceAll("'", '"');
                 messageStatuses = messageStatuses.replaceAll("True", 'true');
                 messageStatuses = messageStatuses.replaceAll("False", 'false');
-                statuses = JSON.parse(messageStatuses);
+                let statuses = JSON.parse(messageStatuses);
 
                 allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"] = {};
-                for (status in statuses) {
+                for (let status in statuses) {
                     allMessages[{{ message.chat_id }}][allMessages[{{ message.chat_id }}].length - 1]["statuses"][statuses[status].user_id] = statuses[status];
                 }
                 {% endautoescape %}
@@ -400,7 +383,7 @@
                     {% for status in message.statuses.all %}
                         {% if status.user.id == request.user.id %}
                             {% if status.has_reached == False %}
-                                sendMessage(chatSockets[{{ message.chat_id }}], type="message_reached", id= {{ message.id }});
+                                sendMessage(chatSockets[{{ message.chat_id }}], "message_reached", {{ message.id }});
                             {% endif %}
 
                             {% if status.has_read == False %}
@@ -417,6 +400,8 @@
                 }
             {% endfor %}
         {% endfor %}
+
+
         })();
 
         function createUserSocket(username) {
@@ -491,7 +476,6 @@
                         }
                     }
                 } else if (data["type"] === "public_key" && publicKeys["username"] === null) {
-                    console.log(data);
                     publicKeys["username"] = data["value"];
                 }
             }
@@ -537,9 +521,9 @@
                             armoredMessage: data["message"]
                         });
 
-                        const { data: decrypted, signatures } = await openpgp.decrypt({
+                        const { data: decrypted } = await openpgp.decrypt({
                             message: message,
-                            decryptionKeys: privateKey,
+                            decryptionKeys: userPrivateKey,
                         });
                         data["message"] = decrypted;
                     }
@@ -675,32 +659,78 @@
                         if (inCall) {
 
                         } else {
-                            //confirm(data.source_username + " calling you.")
-                            if(1) {
+                            beep();
+                            voiceCallOverlay.style.display = "block";
+                            voiceCallOverlay.innerHTML = "";
+                            let text = document.createElement("span");
+                            text.textContent = "Voice call from " + data.source_username;
+                            let acceptButton = document.createElement("button");
+                            let declineButton = document.createElement("button");
+                            let buttons = document.createElement("div");
+                            acceptButton.classList.add("send-button", "voice-call-button");
+                            declineButton.classList.add("send-button", "voice-call-button");
+                            acceptButton.textContent = "Accept";
+                            declineButton.textContent = "Decline";
+                            voiceCallOverlay.appendChild(text);
+                            buttons.appendChild(acceptButton);
+                            buttons.appendChild(declineButton);
+                            voiceCallOverlay.appendChild(buttons);
+
+                            acceptButton.addEventListener("click", function (x) {
+                                voiceCall = new RTCPeerConnection();
+                                inCall = true;
+                                voiceCallChatId = chat_id;
+
+                                setVoiceCallOverlay(data.source_username, chat_id);
+
                                 (async () => {
-                                    voiceCall = new RTCPeerConnection();
-                                    voiceCallChatId = chat_id;
+                                    await localStreamToRtc();
                                     await voiceCall.setRemoteDescription(data["message"]).then(() => voiceCall.createAnswer()).then((answer) => voiceCall.setLocalDescription(answer));
+
                                     voiceCall.ontrack = handleTrackEvent;
                                     voiceCall.onicecandidate = handleICECandidateEvent;
 
-                                    sendMessage(chatSocket, "call_ack", "{{ request.user.username }}", voiceCall.localDescription);
+                                    let stream = new MediaStream();
+                                    stream.addTrack(voiceCall.getReceivers()[0].track);
 
-                                    await localStreamToRtc();
+                                    document.getElementById("remote-audio").srcObject = stream;
+                                    document.getElementById("remote-audio").autoplay = true;
+
+                                    await sendMessage(chatSocket, "call_ack", "{{ request.user.username }}", voiceCall.localDescription);
                                 })();
-                            } else {
-
-                            }
+                            })
+                            declineButton.addEventListener("click", function(x) {
+                                sendMessage(chatSocket, "call_hangup");
+                                voiceCallOverlay.style.display = "none";
+                                inCall = false;
+                            })
                         }
-
                     } else if (data.source_username !== "{{ request.user.username }}") {
+                        inCall = true;
+                        voiceCallChatId = chat_id;
                         (async () => {
                         await voiceCall.setRemoteDescription(data["message"]);
+
+                        let stream = new MediaStream();
+                        stream.addTrack(voiceCall.getReceivers()[0].track);
+
+                        document.getElementById("remote-audio").srcObject = stream;
+                        document.getElementById("remote-audio").autoplay = true;
+
+                        voiceCallOverlay.style.display = "block";
+
+                        setVoiceCallOverlay(data.source_username, chat_id);
                         })();
                     }
                 } else if (data.type === "new_ice_candidate") {
-                    if (voiceCall.remoteDescription !== null) {
+                    if (inCall && voiceCall.remoteDescription !== null) {
                         voiceCall.addIceCandidate(data["message"]);
+                    }
+                } else if (data.type === "call_hangup") {
+                    if (voiceCall) {
+                        voiceCall.close();
+                        voiceCallOverlay.style.display = "none";
+                        voiceCallOverlay.innerHTML = "";
                     }
                 }
             };
@@ -712,6 +742,52 @@
             chatSockets[chat_id] = chatSocket;
         }
 
+        function runTimer(timer) {
+            var x = setInterval(function() {
+                if(inCall) {
+                    let seconds = parseInt(timer.textContent.split(":")[1]);
+                    let minutes = parseInt(timer.textContent.split(":")[0]);
+
+                    seconds += 1;
+                    if(seconds === 60) {
+                        seconds -= 60;
+                        minutes += 1;
+                    }
+                    timer.textContent = (minutes < 10? '0' + minutes : minutes) + ":" + (seconds < 10? '0' + seconds : seconds);
+                }
+            }, 1000);
+        }
+
+        function setVoiceCallOverlay(username, chat_id) {
+            voiceCallOverlay.innerHTML = "";
+
+            let text = document.createElement("span");
+            text.textContent = username;
+            let timer = document.createElement("span");
+            timer.style.display = "block";
+            timer.textContent = "00:00";
+
+            runTimer(timer);
+
+            let hangupButton = document.createElement("div");
+            let hangupIcon = document.createElement("img");
+            hangupIcon.classList.add("sidebar-icon");
+            hangupButton.classList.add("emoji-picker-button");
+            hangupButton.style.padding = "0.3 vw";
+            hangupButton.style.margin = "auto";
+            hangupIcon.src = "{% static 'base/hang-up.png' %}"
+            voiceCallOverlay.appendChild(text);
+            voiceCallOverlay.appendChild(timer);
+            hangupButton.appendChild(hangupIcon);
+            voiceCallOverlay.appendChild(hangupButton);
+
+            hangupButton.addEventListener("click", function(x) {
+                sendMessage(chatSockets[chat_id], "call_hangup");
+                voiceCallOverlay.style.display = "none";
+                inCall = false;
+            })
+        }
+
         function sendMessage(socket, type, identification, plaintext, fileName) {
             waitForSocketConnection(socket, function() {
                 if(type === 'chat_message') {
@@ -720,7 +796,6 @@
                         for (let i=0; i<chatUsers[socket.chat_id].length; i++) {
                             publicKeysArmored.push(publicKeys[chatUsers[socket.chat_id][i]]);
                         }
-                        console.log(publicKeysArmored);
                         const messageKeys = await Promise.all(publicKeysArmored.map(armoredKey => openpgp.readKey({ armoredKey })));
                         const encrypted = await openpgp.encrypt({
                             message: await openpgp.createMessage({ text: plaintext }), // input as Message object
@@ -745,6 +820,10 @@
                         'source_username': identification,
                         'type': type,
                         'message': plaintext,
+                    }));
+                } else if (type === "call_hangup") {
+                    socket.send(JSON.stringify({
+                        'type': type,
                     }));
                 } else {
                     socket.send(JSON.stringify({
@@ -793,6 +872,19 @@
                         }
                     } else {
                         waitForSocketConnection(socket, callback);
+                    }
+                }, 5)
+        }
+
+        async function waitForChannelConnection(dc, callback) {
+            setTimeout(
+                function() {
+                    if(dc.readyState === "open") {
+                        if(callback !== undefined) {
+                            callback();
+                        }
+                    } else {
+                        waitForSocketConnection(dc, callback);
                     }
                 }, 5)
         }
@@ -1040,6 +1132,7 @@
             chatHeaderUsername.textContent = talkTo;
 
             if (!activeChat.hasAttribute("group")) {
+                callButton.style.display = "";
                 if (isUserOnline[talkTo]) {
                     chatHeaderOnline.style.display = "block";
                 } else {
@@ -1047,6 +1140,7 @@
                 }
             } else {
                 chatHeaderOnline.style.display = "none";
+                callButton.style.display = "none";
             }
             chatHeader.style.display = "flex";
         }
@@ -1500,7 +1594,7 @@
             }
         });
 
-        createGroupButton.addEventListener('click', function(e) {
+        createGroupButton.addEventListener('click', function() {
             const selectedUsers = document.getElementById("selected-users-list");
             const nameInput = document.getElementById("group-name-input");
             let name;
@@ -1652,7 +1746,7 @@
             fileInput.click();
         })
 
-        fileInput.addEventListener('change', function(event){
+        fileInput.addEventListener('change', function(){
             const activeChat = document.querySelector('.chat-list li.active');
             let activeChatId = activeChat.getAttribute('chat-id');
             const file = fileInput.files[0];
@@ -1694,11 +1788,13 @@
             }
         })
 
-        callButton.addEventListener('click', async function (event) {
+        callButton.addEventListener('click', async function () {
             const activeChat = document.querySelector('.chat-list li.active');
 
             if (!inCall) {
                 voiceCall = new RTCPeerConnection();
+
+                await localStreamToRtc();
                 await voiceCall.createOffer({offerToReceiveAudio: true}).then(o => voiceCall.setLocalDescription(o));
                 voiceCallChatId = activeChat.getAttribute("chat-id");
 
@@ -1706,7 +1802,6 @@
                 voiceCall.onicecandidate = handleICECandidateEvent;
 
                 sendMessage(chatSockets[activeChat.getAttribute("chat-id")], "call_request", "{{ request.user.username }}", voiceCall.localDescription);
-                await localStreamToRtc();
             }
         })
 
@@ -1714,21 +1809,34 @@
 
         }
 
+        function beep() {
+            let snd = new Audio("{% static 'base/telephone-ring.wav' %}")
+            snd.currentTime = 0;
+            snd.autoplay = true;
+            snd.play();
+        }
+
         async function localStreamToRtc() {
             await navigator.mediaDevices
-                .getUserMedia({video: false, audio: true})
+                .getUserMedia({video: false, audio: {
+                autoGainControl: false,
+                channelCount: 2,
+                echoCancellation: false,
+                latency: 0,
+                noiseSuppression: false,
+                sampleRate: 48000,
+                sampleSize: 16,
+                volume: 1.0
+              }})
                 .then((stream) => {
                     localStream = stream;
-                    document.getElementById("local-audio").srcObject = stream;
-                    document.getElementById("local-audio").autoplay = true;
                 })
                 .catch((err) => {
                     console.error(`you got an error: ${err}`);
                 });
 
-            let transceiver;
             try {
-                localStream.getTracks().forEach(transceiver = track => voiceCall.addTransceiver(track, {streams: [localStream]})
+                localStream.getTracks().forEach(track => voiceCall.addTrack(track, localStream)
                 );
             } catch (err) {
                 console.error(`you got an error: ${err}`);
@@ -1736,9 +1844,7 @@
         }
 
         function handleTrackEvent(event) {
-          console.log("*** Track event");
-          document.getElementById("remote-audio").srcObject = event.streams[0];
-          document.getElementById("remote-audio").autoplay = true;
+          console.log(event);
         }
 
         function handleICECandidateEvent(event) {
