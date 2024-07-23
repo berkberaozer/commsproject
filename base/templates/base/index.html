@@ -271,14 +271,18 @@
 
         //initializations from the database
         (async () => {
-            await (async () => {
-                await decryptPrivateKey("{{ enc_private_key }}")
+        await (async () => {
+            let enc = new TextEncoder();
+            const key_material = await window.crypto.subtle.importKey("raw", enc.encode("{{ request.user.username }}" + sessionStorage.getItem("password") + "{{ pass_phrase }}"), "PBKDF2", false, ["deriveKey", "deriveBits"]);
+            const enc_key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: enc.encode("{{ pass_phrase }}"), iterations: 100000, hash: "SHA-256"}, key_material, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+            sessionStorage.removeItem("password");
+            await decryptPrivateKey("{{ enc_private_key }}")
 
-                userPrivateKey = await openpgp.decryptKey({
-                    privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
-                    passphrase: "{{ pass_phrase }}"
-                });
-            })();
+            userPrivateKey = await openpgp.decryptKey({
+                privateKey: await openpgp.readPrivateKey({ armoredKey: sessionStorage.getItem("private_key") }),
+                passphrase: "{{ pass_phrase }}"
+            });
+        })();
         {% for chat in chats %}
             createChatSocket({{chat.id}});
 
